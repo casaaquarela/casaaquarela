@@ -165,19 +165,22 @@ function ModalExcluir({reserva,onClose,onConfirm}){
   );
 }
 
-function ModalReserva({onClose,onSave,reservas,config,userId,editando}){
+function ModalReserva({onClose,onSave,reservas,config,userId,editando,inicial}){
+  const base=editando||inicial||{};
+  const isEdit=!!editando;
   const salas=config.salas||[];
   const periodos=config.periodos;
-  const[sala,setSala]=useState(editando?.sala||salas[0]?.id||"sala1");
-  const[data,setData]=useState(editando?.date||today());
-  const[modo,setModo]=useState(editando?.modo||"avulsa");
-  const[periodo,setPeriodo]=useState(editando?.periodo||"manha");
-  const[hIni,setHIni]=useState(editando?.horaInicio||"09:00");
-  const[hFim,setHFim]=useState(editando?.horaFim||"10:00");
-  const[mesMensal,setMesMensal]=useState(editando?.mesMensal||today().slice(0,7));
-  const[recorrencia,setRecorrencia]=useState(editando?.recorrencia||"unica");
-  const[modalidade,setModalidade]=useState(editando?.modalidade||"presencial");
-  const[notes,setNotes]=useState(editando?.notes||"");
+  const[sala,setSala]=useState(base.sala||salas[0]?.id||"sala1");
+  const[data,setData]=useState(base.date||today());
+  const[modo,setModo]=useState(base.modo||"avulsa");
+  const[periodo,setPeriodo]=useState(base.periodo||"manha");
+  const[hIni,setHIni]=useState(base.horaInicio||"09:00");
+  const[hFim,setHFim]=useState(base.horaFim||"10:00");
+  const[mesMensal,setMesMensal]=useState(base.mesMensal||today().slice(0,7));
+  const[recorrencia,setRecorrencia]=useState(base.recorrencia||"unica");
+  const[modalidade,setModalidade]=useState(base.modalidade||"presencial");
+  const[mensal,setMensal]=useState(false);
+  const[notes,setNotes]=useState(base.notes||"");
   const[erro,setErro]=useState("");
 
   const hStart=horaParaMin(config.horaInicio||"08:00");
@@ -185,29 +188,30 @@ function ModalReserva({onClose,onSave,reservas,config,userId,editando}){
   const horaOptions=[];
   for(let m=hStart;m<=hEnd;m+=30){const hh=Math.floor(m/60),mn=m%60;const ts=String(hh).padStart(2,"0")+":"+String(mn).padStart(2,"0");horaOptions.push({value:ts,label:ts});}
 
-  let horaInicio="",horaFim="",valor=0,resumo="";
-  if(modo==="avulsa"){horaInicio=hIni;horaFim=hFim;const h=calcHoras(hIni,hFim);valor=+(h*config.valorHoraAvulsa).toFixed(2);resumo=`${h>0?h.toFixed(1):"?"}h × ${fmtR(config.valorHoraAvulsa)}/h = ${fmtR(valor)}`;}
-  else if(modo==="periodo"){const p=periodos[periodo];horaInicio=p.inicio;horaFim=p.fim;valor=Number(p.valor||0);resumo=`${p.label}: ${p.inicio}–${p.fim} → ${fmtR(valor)}`;}
-  else{horaInicio="00:00";horaFim="23:59";valor=config.valorMensal;resumo=`Mensalidade fixa: ${fmtR(valor)}`;}
+  let horaInicio="",horaFim="",valor=0,resumoValor="";
+  if(modo==="avulsa"){horaInicio=hIni;horaFim=hFim;const h=calcHoras(hIni,hFim);valor=+(h*config.valorHoraAvulsa).toFixed(2);resumoValor=fmtR(valor);}
+  else if(modo==="periodo"){const p=periodos[periodo];horaInicio=p.inicio;horaFim=p.fim;valor=Number(p.valor||0);resumoValor=fmtR(valor);}
+  else{horaInicio="00:00";horaFim="23:59";valor=0;resumoValor="A combinar";}
 
   const salvar=()=>{
     setErro("");
-    if(!data||!sala)return setErro("Preencha todos os campos.");
+    if(!data&&!mensal)return setErro("Preencha a data.");
+    if(!sala)return setErro("Selecione uma sala.");
     if(modo==="avulsa"&&horaParaMin(hFim)<=horaParaMin(hIni))return setErro("Horário de fim deve ser após o início.");
-    const base={id:editando?.id||uid(),date:data,sala,horaInicio,horaFim,modo,periodo:modo==="periodo"?periodo:undefined,mesMensal:modo==="mensal"?mesMensal:undefined,valor,userId,notes,pago:false,modalidade,recorrencia};
-    if(modo!=="mensal"&&!editando){
+    const dadosBase={id:isEdit?editando.id:uid(),date:mensal?today():data,sala,horaInicio,horaFim,modo:mensal?"mensal":modo,periodo:modo==="periodo"?periodo:undefined,mesMensal:mensal?mesMensal:undefined,valor:mensal?0:valor,userId,notes,pago:false,modalidade,recorrencia:mensal?"unica":recorrencia};
+    if(!mensal&&!isEdit){
       const nova={date:data,sala,horaInicio,horaFim};
       if(conflito(reservas,nova,[]))return setErro("Já existe uma reserva nessa sala nesse horário.");
     }
-    const geradas=editando?[base]:gerarRecorrentes(base,recorrencia,config);
-    onSave(geradas,!!editando);
+    const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,mensal?"unica":recorrencia,config);
+    onSave(geradas,isEdit);
     onClose();
   };
 
-  const modoBtn=(m,label,sub)=>(<button onClick={()=>setModo(m)} style={{flex:1,padding:"10px 8px",border:`2px solid ${modo===m?C.accent:C.border}`,borderRadius:10,background:modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",transition:"all 0.12s"}}><div style={{fontWeight:700,fontSize:13,color:modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{sub}</div></button>);
+  const modoBtn=(m,label,sub)=>(<button onClick={()=>{setModo(m);setMensal(false);}} style={{flex:1,padding:"10px 8px",border:`2px solid ${!mensal&&modo===m?C.accent:C.border}`,borderRadius:10,background:!mensal&&modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",transition:"all 0.12s"}}><div style={{fontWeight:700,fontSize:13,color:!mensal&&modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{sub}</div></button>);
 
   return(
-    <Modal title={editando?"Editar Reserva":"Nova Reserva"} onClose={onClose}>
+    <Modal title={isEdit?"Editar Reserva":"Nova Reserva"} onClose={onClose}>
       <div style={{marginBottom:14}}>
         <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Sala</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -220,21 +224,28 @@ function ModalReserva({onClose,onSave,reservas,config,userId,editando}){
           {[["presencial","🏢 Presencial"],["online","💻 Online"]].map(([v,l])=>(<button key={v} onClick={()=>setModalidade(v)} style={{flex:1,padding:"9px",border:`2px solid ${modalidade===v?C.accent:C.border}`,borderRadius:10,background:modalidade===v?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:700,color:modalidade===v?C.accent:C.textMid,fontSize:13}}>{l}</button>))}
         </div>
       </div>
-      <div style={{marginBottom:16}}>
-        <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Tipo de reserva</label>
-        <div style={{display:"flex",gap:8}}>{modoBtn("avulsa","Hora Avulsa",fmtR(config.valorHoraAvulsa)+"/h")}{modoBtn("periodo","Período","valor fixo")}{modoBtn("mensal","Mensal",fmtR(config.valorMensal)+"/mês")}</div>
-      </div>
-      {modo!=="mensal"&&<Field label="Data" type="date" value={data} onChange={setData}/>}
-      {modo==="avulsa"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}><Field label="Início" value={hIni} onChange={setHIni} options={horaOptions}/><Field label="Fim" value={hFim} onChange={setHFim} options={horaOptions}/></div>}
-      {modo==="periodo"&&<div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Período</label><div style={{display:"flex",gap:8}}>{Object.entries(periodos).map(([k,p])=>(<button key={k} onClick={()=>setPeriodo(k)} style={{flex:1,padding:"10px 8px",border:`2px solid ${periodo===k?C.accent:C.border}`,borderRadius:10,background:periodo===k?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:periodo===k?C.accent:C.text}}>{p.label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{p.inicio}–{p.fim}</div><div style={{fontSize:12,color:periodo===k?C.accent:C.textMid,fontWeight:600,marginTop:2}}>{fmtR(p.valor)}</div></button>))}</div></div>}
-      {modo==="mensal"&&<Field label="Mês de referência" type="month" value={mesMensal} onChange={setMesMensal}/>}
-      {!editando&&modo!=="mensal"&&(
-        <Field label="Recorrência" value={recorrencia} onChange={setRecorrencia} options={[{value:"unica",label:"Não se repete"},{value:"semanal",label:"Toda semana (por 6 meses)"},{value:"quinzenal",label:"A cada 2 semanas (por 6 meses)"},{value:"mensal",label:"Todo mês (por 6 meses)"}]}/>
-      )}
-      <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:13,color:C.textMid}}>
-        <strong style={{color:C.accent}}>Valor: </strong>{resumo}
-        {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:600}}>· Recorrente até {fmt(addMonths(data,6))}</span>}
-      </div>
+      {!mensal&&(<>
+        <div style={{marginBottom:16}}>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Tipo de reserva</label>
+          <div style={{display:"flex",gap:8}}>{modoBtn("avulsa","Hora Avulsa",fmtR(config.valorHoraAvulsa)+"/h")}{modoBtn("periodo","Período","valor por período")}</div>
+        </div>
+        <Field label="Data" type="date" value={data} onChange={setData}/>
+        {modo==="avulsa"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}><Field label="Início" value={hIni} onChange={setHIni} options={horaOptions}/><Field label="Fim" value={hFim} onChange={setHFim} options={horaOptions}/></div>}
+        {modo==="periodo"&&(<div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Período</label>
+          <div style={{display:"flex",gap:8}}>{Object.entries(periodos).map(([k,p])=>(<button key={k} onClick={()=>setPeriodo(k)} style={{flex:1,padding:"10px 8px",border:`2px solid ${periodo===k?C.accent:C.border}`,borderRadius:10,background:periodo===k?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:periodo===k?C.accent:C.text}}>{p.label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{p.inicio}–{p.fim}</div><div style={{fontSize:12,color:periodo===k?C.accent:C.textMid,fontWeight:600,marginTop:2}}>{fmtR(p.valor)}</div></button>))}</div>
+        </div>)}
+        {!isEdit&&<Field label="Recorrência" value={recorrencia} onChange={setRecorrencia} options={[{value:"unica",label:"Não se repete"},{value:"semanal",label:"Toda semana (por 6 meses)"},{value:"quinzenal",label:"A cada 2 semanas (por 6 meses)"},{value:"mensal_rec",label:"Todo mês (por 6 meses)"}]}/>}
+        <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
+          {resumoValor}
+          {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· Recorrente até {fmt(addMonths(data,6))}</span>}
+        </div>
+      </>)}
+      <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",border:`1px solid ${mensal?C.accent:C.border}`,borderRadius:10,cursor:"pointer",background:mensal?C.accentLight:C.white,marginBottom:14}}>
+        <input type="checkbox" checked={mensal} onChange={e=>setMensal(e.target.checked)} style={{accentColor:C.accent,width:16,height:16}}/>
+        <div><div style={{fontWeight:700,fontSize:14,color:mensal?C.accent:C.text}}>Mensalidade fixa</div><div style={{fontSize:12,color:C.muted}}>Valor a combinar com os gestores</div></div>
+      </label>
+      {mensal&&<Field label="Mês de referência" type="month" value={mesMensal} onChange={setMesMensal}/>}
       <Field label="Observações" value={notes} onChange={setNotes} placeholder="Opcional..."/>
       {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:12}}>{erro}</div>}
       <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn variant="secondary" onClick={onClose}>Cancelar</Btn><Btn onClick={salvar}>Confirmar Reserva</Btn></div>
@@ -397,7 +408,7 @@ function AgendaView({reservas,setReservas,users,config,currentUser,isManager}){
           })}
         </Card>
       )}
-      {modalAberto&&<ModalReserva onClose={()=>setModalAberto(false)} onSave={salvarReservas} reservas={reservas} config={config} userId={currentUser.id} editando={editando||slotPre?{...slotPre}:null}/>}
+      {modalAberto&&<ModalReserva onClose={()=>setModalAberto(false)} onSave={salvarReservas} reservas={reservas} config={config} userId={currentUser.id} editando={editando||null} inicial={editando?null:slotPre}/>}
       {excluindo&&<ModalExcluir reserva={excluindo} onClose={()=>setExcluindo(null)} onConfirm={confirmarExcluir}/>}
     </div>
   );
@@ -589,22 +600,30 @@ function ConfigView({config,setConfig}){
         </div>))}
       </Card>
       <Card style={{marginBottom:20}}>
-        <h3 style={{margin:"0 0 16px",color:C.text,fontSize:16,fontWeight:700}}>Valores</h3>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-          <Field label="Hora avulsa (R$/h)" type="number" value={form.valorHoraAvulsa} onChange={v=>setForm(f=>({...f,valorHoraAvulsa:Number(v)}))} helper={`Exemplo: 2h = ${fmtR((form.valorHoraAvulsa||0)*2)}`}/>
-          <Field label="Mensalidade (R$/mês)" type="number" value={form.valorMensal} onChange={v=>setForm(f=>({...f,valorMensal:Number(v)}))}/>
+        <h3 style={{margin:"0 0 16px",color:C.text,fontSize:16,fontWeight:700}}>Valores de sublocação</h3>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+          <div>
+            <Field label="Hora avulsa (R$/h)" type="number" value={form.valorHoraAvulsa} onChange={v=>setForm(f=>({...f,valorHoraAvulsa:Number(v)}))} helper={`Exemplo: 2h = ${fmtR((form.valorHoraAvulsa||0)*2)}`}/>
+          </div>
+          <div>
+            <div style={{fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Mensalidade</div>
+            <div style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",fontSize:14,color:C.muted,fontStyle:"italic"}}>A combinar com gestores</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:4}}>Não tem valor fixo — combinar direto</div>
+          </div>
         </div>
-      </Card>
-      <Card>
-        <h3 style={{margin:"0 0 6px",color:C.text,fontSize:16,fontWeight:700}}>Períodos do dia</h3>
-        <p style={{color:C.muted,fontSize:13,margin:"0 0 16px"}}>Cada período tem valor fixo. O profissional escolhe um período inteiro ao reservar.</p>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16}}>
-          {Object.entries(form.periodos).map(([k,p])=>(<div key={k} style={{background:C.surfaceAlt,borderRadius:10,padding:14,border:`1px solid ${C.border}`}}>
-            <Field label="Nome" value={p.label} onChange={v=>setPeriodo(k,"label",v)}/>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Field label="Início" type="time" value={p.inicio} onChange={v=>setPeriodo(k,"inicio",v)}/><Field label="Fim" type="time" value={p.fim} onChange={v=>setPeriodo(k,"fim",v)}/></div>
-            <Field label="Valor (R$)" type="number" value={p.valor||0} onChange={v=>setPeriodo(k,"valor",Number(v))}/>
-            <div style={{background:C.accentLight,borderRadius:8,padding:"7px 12px",fontSize:13,color:C.accent,fontWeight:700,textAlign:"center"}}>{p.label}: {fmtR(p.valor||0)}</div>
-          </div>))}
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16}}>
+          <div style={{fontSize:13,color:C.textMid,marginBottom:12,fontWeight:600}}>Períodos do dia — valores fixos</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}>
+            {Object.entries(form.periodos).map(([k,p])=>(<div key={k} style={{background:C.surfaceAlt,borderRadius:10,padding:14,border:`1px solid ${C.border}`}}>
+              <Field label="Nome do período" value={p.label} onChange={v=>setPeriodo(k,"label",v)}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Field label="Início" type="time" value={p.inicio} onChange={v=>setPeriodo(k,"inicio",v)}/>
+                <Field label="Fim" type="time" value={p.fim} onChange={v=>setPeriodo(k,"fim",v)}/>
+              </div>
+              <Field label="Valor do período (R$)" type="number" value={p.valor||0} onChange={v=>setPeriodo(k,"valor",Number(v))}/>
+              <div style={{background:C.accentLight,borderRadius:8,padding:"7px 12px",fontSize:13,color:C.accent,fontWeight:700,textAlign:"center"}}>{p.label}: {fmtR(p.valor||0)}</div>
+            </div>))}
+          </div>
         </div>
       </Card>
     </div>
