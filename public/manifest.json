@@ -1,0 +1,24 @@
+{
+  "short_name": "Casa Aquarela",
+  "name": "Casa Aquarela – Agenda & Salas",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1B6CA8",
+  "background_color": "#F4F6FA",
+  "orientation": "portrait-primary",
+  "description": "Sistema de agenda e sublocação de salas da Casa Aquarela"
+}
