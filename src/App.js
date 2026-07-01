@@ -1,5 +1,21 @@
 /* eslint-disable no-restricted-globals */
 import { useState, useEffect, useCallback } from "react";
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "firebase/auth";
+import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBe-NXMNR-_dqDfBTO8dcfeNhBbaQ9okCI",
+  authDomain: "casa-aquarela-sistema.firebaseapp.com",
+  projectId: "casa-aquarela-sistema",
+  storageBucket: "casa-aquarela-sistema.firebasestorage.app",
+  messagingSenderId: "830950690226",
+  appId: "1:830950690226:web:fdd49058ff5cec27d9a8ab"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
 const C = {
   bg:"#F4F6FA",white:"#FFFFFF",surface:"#FFFFFF",surfaceAlt:"#F0F2F7",border:"#E2E6EF",
@@ -14,8 +30,7 @@ const MONTH_FULL=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho",
 const MONTH_SHORT=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
 const DEFAULT_CONFIG={
-  valorHoraAvulsa:35,valorMensal:800,nomeClinica:"Casa Aquarela",
-  horaInicio:"08:00",horaFim:"21:00",
+  valorHoraAvulsa:35,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
   salas:[
     {id:"sala1",label:"Sala 1",cor:"#D97706",corLight:"#FEF3C7"},
     {id:"sala2",label:"Sala 2",cor:"#059669",corLight:"#D1FAE5"},
@@ -26,14 +41,6 @@ const DEFAULT_CONFIG={
     noite:{label:"Noite",inicio:"17:00",fim:"21:00",valor:120},
   },
 };
-
-const INITIAL_USERS=[
-  {id:"g1",login:"gestor1",senha:"gestor123",role:"manager",name:"Gestor 1",specialty:"",color:"#1B6CA8"},
-  {id:"g2",login:"gestor2",senha:"admin456",role:"manager",name:"Gestor 2",specialty:"",color:"#1B6CA8"},
-  {id:"p1",login:"ana",senha:"ana123",role:"professional",name:"Dra. Ana Lima",specialty:"Psicologia Clínica",color:"#1B6CA8"},
-  {id:"p2",login:"carlos",senha:"carlos123",role:"professional",name:"Dr. Carlos Mendes",specialty:"Neuropsicologia",color:"#7C3AED"},
-  {id:"p3",login:"beatriz",senha:"bia123",role:"professional",name:"Dra. Beatriz Souza",specialty:"Psicologia Infantil",color:"#0891B2"},
-];
 
 const uid=()=>Math.random().toString(36).slice(2,10);
 const today=()=>new Date().toISOString().slice(0,10);
@@ -46,11 +53,8 @@ const conflito=(reservas,nova,excludeIds=[])=>reservas.some(r=>!excludeIds.inclu
 const addDays=(dateStr,days)=>{const d=new Date(dateStr+"T12:00:00");d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);};
 const addMonths=(dateStr,months)=>{const d=new Date(dateStr+"T12:00:00");d.setMonth(d.getMonth()+months);return d.toISOString().slice(0,10);};
 
-const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
-const load=(k,fb)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):fb;}catch{return fb;}};
-
-const gerarRecorrentes=(base,recorrencia,config)=>{
-  if(recorrencia==="unica") return [base];
+const gerarRecorrentes=(base,recorrencia)=>{
+  if(!recorrencia||recorrencia==="unica")return[base];
   const resultados=[];
   const serieId=uid();
   let dataAtual=base.date;
@@ -58,9 +62,9 @@ const gerarRecorrentes=(base,recorrencia,config)=>{
   let i=0;
   while(dataAtual<=dataFim&&i<200){
     resultados.push({...base,id:uid(),date:dataAtual,serieId,recorrencia,serieInicio:base.date,serieFim:dataFim});
-    if(recorrencia==="semanal") dataAtual=addDays(dataAtual,7);
-    else if(recorrencia==="quinzenal") dataAtual=addDays(dataAtual,14);
-    else if(recorrencia==="mensal") dataAtual=addMonths(dataAtual,1);
+    if(recorrencia==="semanal")dataAtual=addDays(dataAtual,7);
+    else if(recorrencia==="quinzenal")dataAtual=addDays(dataAtual,14);
+    else if(recorrencia==="mensal_rec")dataAtual=addMonths(dataAtual,1);
     else break;
     i++;
   }
@@ -108,12 +112,21 @@ const Stat=({label,value,color=C.accent,sub})=>(
 );
 const SalaTag=({salaId,salas})=>{const s=salas?.find(x=>x.id===salaId);if(!s)return null;return<Badge label={s.label} bg={s.corLight} color={s.cor}/>;};
 
-function LoginScreen({users,onLogin}){
-  const[login,setLogin]=useState("");
+function LoginScreen({onLogin}){
+  const[email,setEmail]=useState("");
   const[senha,setSenha]=useState("");
   const[erro,setErro]=useState("");
   const[show,setShow]=useState(false);
-  const tentar=()=>{const u=users.find(u=>u.login.toLowerCase()===login.toLowerCase()&&u.senha===senha);if(u)onLogin(u);else{setErro("Login ou senha incorretos.");setSenha("");}};
+  const[loading,setLoading]=useState(false);
+  const tentar=async()=>{
+    setErro("");setLoading(true);
+    try{
+      await signInWithEmailAndPassword(auth,email,senha);
+    }catch(e){
+      setErro("E-mail ou senha incorretos.");
+    }
+    setLoading(false);
+  };
   return(
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,-apple-system,sans-serif",padding:20}}>
       <div style={{width:"100%",maxWidth:380}}>
@@ -123,7 +136,7 @@ function LoginScreen({users,onLogin}){
           <p style={{color:C.muted,margin:0,fontSize:14}}>Agenda & Salas</p>
         </div>
         <Card>
-          <Field label="Login" value={login} onChange={setLogin} placeholder="seu.login"/>
+          <Field label="E-mail" type="email" value={email} onChange={setEmail} placeholder="seu@email.com"/>
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Senha</label>
             <div style={{position:"relative"}}>
@@ -132,9 +145,9 @@ function LoginScreen({users,onLogin}){
             </div>
           </div>
           {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:14}}>{erro}</div>}
-          <Btn full onClick={tentar} style={{padding:"11px 18px",fontSize:15}}>Entrar</Btn>
+          <Btn full onClick={tentar} disabled={loading} style={{padding:"11px 18px",fontSize:15}}>{loading?"Entrando...":"Entrar"}</Btn>
         </Card>
-        <p style={{textAlign:"center",color:C.muted,fontSize:12,marginTop:16}}>Acesse com o login fornecido pela gestão.</p>
+        <p style={{textAlign:"center",color:C.muted,fontSize:12,marginTop:16}}>Acesse com o e-mail e senha fornecidos pela gestão.</p>
       </div>
     </div>
   );
@@ -165,7 +178,7 @@ function ModalExcluir({reserva,onClose,onConfirm}){
   );
 }
 
-function ModalReserva({onClose,onSave,reservas,config,userId,editando,inicial}){
+function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inicial}){
   const base=editando||inicial||{};
   const isEdit=!!editando;
   const salas=config.salas||[];
@@ -179,7 +192,7 @@ function ModalReserva({onClose,onSave,reservas,config,userId,editando,inicial}){
   const[mesMensal,setMesMensal]=useState(base.mesMensal||today().slice(0,7));
   const[recorrencia,setRecorrencia]=useState(base.recorrencia||"unica");
   const[modalidade,setModalidade]=useState(base.modalidade||"presencial");
-  const[mensal,setMensal]=useState(false);
+  const[mensal,setMensal]=useState(base.modo==="mensal");
   const[notes,setNotes]=useState(base.notes||"");
   const[erro,setErro]=useState("");
 
@@ -189,26 +202,35 @@ function ModalReserva({onClose,onSave,reservas,config,userId,editando,inicial}){
   for(let m=hStart;m<=hEnd;m+=30){const hh=Math.floor(m/60),mn=m%60;const ts=String(hh).padStart(2,"0")+":"+String(mn).padStart(2,"0");horaOptions.push({value:ts,label:ts});}
 
   let horaInicio="",horaFim="",valor=0,resumoValor="";
-  if(modo==="avulsa"){horaInicio=hIni;horaFim=hFim;const h=calcHoras(hIni,hFim);valor=+(h*config.valorHoraAvulsa).toFixed(2);resumoValor=fmtR(valor);}
-  else if(modo==="periodo"){const p=periodos[periodo];horaInicio=p.inicio;horaFim=p.fim;valor=Number(p.valor||0);resumoValor=fmtR(valor);}
-  else{horaInicio="00:00";horaFim="23:59";valor=0;resumoValor="A combinar";}
+  if(!mensal){
+    if(modo==="avulsa"){horaInicio=hIni;horaFim=hFim;const h=calcHoras(hIni,hFim);valor=+(h*config.valorHoraAvulsa).toFixed(2);resumoValor=fmtR(valor);}
+    else if(modo==="periodo"){const p=periodos[periodo];horaInicio=p.inicio;horaFim=p.fim;valor=Number(p.valor||0);resumoValor=fmtR(valor);}
+  } else {horaInicio="00:00";horaFim="23:59";valor=0;resumoValor="A combinar com gestores";}
 
   const salvar=()=>{
     setErro("");
-    if(!data&&!mensal)return setErro("Preencha a data.");
+    if(!mensal&&!data)return setErro("Preencha a data.");
     if(!sala)return setErro("Selecione uma sala.");
-    if(modo==="avulsa"&&horaParaMin(hFim)<=horaParaMin(hIni))return setErro("Horário de fim deve ser após o início.");
-    const dadosBase={id:isEdit?editando.id:uid(),date:mensal?today():data,sala,horaInicio,horaFim,modo:mensal?"mensal":modo,periodo:modo==="periodo"?periodo:undefined,mesMensal:mensal?mesMensal:undefined,valor:mensal?0:valor,userId,notes,pago:false,modalidade,recorrencia:mensal?"unica":recorrencia};
+    if(!mensal&&modo==="avulsa"&&horaParaMin(hFim)<=horaParaMin(hIni))return setErro("Horário de fim deve ser após o início.");
+    const dadosBase={
+      id:isEdit?editando.id:uid(),
+      date:mensal?today():data,sala,horaInicio,horaFim,
+      modo:mensal?"mensal":modo,
+      periodo:modo==="periodo"&&!mensal?periodo:undefined,
+      mesMensal:mensal?mesMensal:undefined,
+      valor,userId:userProfile.uid,userName:userProfile.displayName||userProfile.email,
+      notes,pago:false,modalidade,recorrencia:mensal?"unica":recorrencia
+    };
     if(!mensal&&!isEdit){
       const nova={date:data,sala,horaInicio,horaFim};
       if(conflito(reservas,nova,[]))return setErro("Já existe uma reserva nessa sala nesse horário.");
     }
-    const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,mensal?"unica":recorrencia,config);
+    const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,mensal?"unica":recorrencia);
     onSave(geradas,isEdit);
     onClose();
   };
 
-  const modoBtn=(m,label,sub)=>(<button onClick={()=>{setModo(m);setMensal(false);}} style={{flex:1,padding:"10px 8px",border:`2px solid ${!mensal&&modo===m?C.accent:C.border}`,borderRadius:10,background:!mensal&&modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",transition:"all 0.12s"}}><div style={{fontWeight:700,fontSize:13,color:!mensal&&modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{sub}</div></button>);
+  const modoBtn=(m,label,sub)=>(<button onClick={()=>{setModo(m);setMensal(false);}} style={{flex:1,padding:"10px 8px",border:`2px solid ${!mensal&&modo===m?C.accent:C.border}`,borderRadius:10,background:!mensal&&modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:!mensal&&modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{sub}</div></button>);
 
   return(
     <Modal title={isEdit?"Editar Reserva":"Nova Reserva"} onClose={onClose}>
@@ -238,7 +260,7 @@ function ModalReserva({onClose,onSave,reservas,config,userId,editando,inicial}){
         {!isEdit&&<Field label="Recorrência" value={recorrencia} onChange={setRecorrencia} options={[{value:"unica",label:"Não se repete"},{value:"semanal",label:"Toda semana (por 6 meses)"},{value:"quinzenal",label:"A cada 2 semanas (por 6 meses)"},{value:"mensal_rec",label:"Todo mês (por 6 meses)"}]}/>}
         <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
           {resumoValor}
-          {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· Recorrente até {fmt(addMonths(data,6))}</span>}
+          {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(addMonths(data,6))}</span>}
         </div>
       </>)}
       <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",border:`1px solid ${mensal?C.accent:C.border}`,borderRadius:10,cursor:"pointer",background:mensal?C.accentLight:C.white,marginBottom:14}}>
@@ -260,7 +282,7 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,config}){
   const horas=[];
   for(let m=hStart;m<hEnd;m+=60)horas.push(m/60);
   const dias=Array.from({length:7},(_,i)=>{const d=new Date(semanaBase);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);});
-  const getR=(dia,horaH,salaId)=>reservas.filter(r=>r.date===dia&&r.sala===salaId&&horaParaMin(r.horaInicio)<=horaH*60&&horaParaMin(r.horaFim)>horaH*60);
+  const getR=(dia,h,salaId)=>reservas.filter(r=>r.date===dia&&r.sala===salaId&&horaParaMin(r.horaInicio)<=h*60&&horaParaMin(r.horaFim)>h*60);
   return(
     <div style={{overflowX:"auto"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,tableLayout:"fixed"}}>
@@ -280,13 +302,13 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,config}){
               <td style={{padding:"2px 5px",color:C.muted,fontSize:10,textAlign:"right",verticalAlign:"top",paddingTop:4}}>{String(h).padStart(2,"0")}:00</td>
               {dias.map(d=>salas.map(sala=>{
                 const rs=getR(d,h,sala.id);const r=rs[0];
-                const u=r?users.find(u=>u.id===r.userId):null;
                 const isFirst=r&&horaParaMin(r.horaInicio)===h*60;
+                const nome=r?.userName||"—";
                 return(
                   <td key={d+sala.id+h} onClick={!r?()=>onSlotClick(d,h,sala.id):undefined}
                     style={{border:`1px solid ${C.border}`,padding:2,verticalAlign:"top",height:26,background:r?sala.corLight:"#FAFBFD",cursor:r?"default":"pointer"}}>
                     {isFirst&&(<div style={{background:sala.cor,color:"#fff",borderRadius:3,padding:"2px 3px",fontSize:9,fontWeight:600,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
-                      {u?.name?.split(" ").slice(0,2).join(" ")||"—"}{r.modalidade==="online"?" 💻":""}
+                      {nome.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
                     </div>)}
                   </td>
                 );
@@ -300,8 +322,7 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,config}){
 }
 
 function AlertasVencimento({reservas}){
-  const hoje=today();
-  const em30=addDays(hoje,30);
+  const hoje=today();const em30=addDays(hoje,30);
   const series={};
   reservas.forEach(r=>{if(r.serieId&&r.serieFim){if(!series[r.serieId]||r.serieFim>series[r.serieId].serieFim)series[r.serieId]=r;}});
   const vencendo=Object.values(series).filter(r=>r.serieFim>=hoje&&r.serieFim<=em30);
@@ -309,48 +330,66 @@ function AlertasVencimento({reservas}){
   return(
     <div style={{background:C.warningLight,border:`1px solid ${C.warning}44`,borderRadius:10,padding:"12px 16px",marginBottom:20}}>
       <div style={{fontWeight:700,color:C.warning,marginBottom:6,fontSize:14}}>⚠️ Recorrências vencendo em 30 dias</div>
-      {vencendo.map(r=>(<div key={r.serieId} style={{fontSize:13,color:C.textMid,marginBottom:2}}>Série iniciada em {fmt(r.serieInicio)} — vence em <strong>{fmt(r.serieFim)}</strong></div>))}
+      {vencendo.map(r=>(<div key={r.serieId} style={{fontSize:13,color:C.textMid,marginBottom:2}}>
+        Série de <strong>{r.userName}</strong> — iniciada em {fmt(r.serieInicio)}, vence em <strong>{fmt(r.serieFim)}</strong>
+      </div>))}
     </div>
   );
 }
 
-function AgendaView({reservas,setReservas,users,config,currentUser,isManager}){
+function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[semOff,setSemOff]=useState(0);
   const[modalAberto,setModalAberto]=useState(false);
   const[editando,setEditando]=useState(null);
   const[excluindo,setExcluindo]=useState(null);
   const[slotPre,setSlotPre]=useState(null);
   const[viewMode,setViewMode]=useState("semana");
-  const[filtroPro,setFiltroPro]=useState("");
   const[filtroDt,setFiltroDt]=useState("");
   const salas=config.salas||[];
   const semanaBase=(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay()+1+semOff*7);return d.toISOString().slice(0,10);})();
-  const profissionais=users.filter(u=>u.role==="professional");
-  const abrirNovo=(date,hora,salaId)=>{const hi=hora!=null?String(Math.floor(hora)).padStart(2,"0")+":00":"09:00";const hf=hora!=null?String(Math.floor(hora)+1).padStart(2,"0")+":00":"10:00";setSlotPre({date:date||today(),horaInicio:hi,horaFim:hf,sala:salaId||salas[0]?.id});setEditando(null);setModalAberto(true);};
-  const abrirEditar=(r)=>{setEditando(r);setSlotPre(null);setModalAberto(true);};
-  const salvarReservas=(geradas,isEdit)=>{
-    if(isEdit)setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
-    else setReservas(prev=>[...prev,...geradas.map(g=>({...g,userId:currentUser.id}))]);
+
+  const minhasReservas=isManager?reservas:reservas.filter(r=>r.userId===userProfile.uid);
+  const lista=minhasReservas.filter(r=>!filtroDt||r.date===filtroDt).sort((a,b)=>(a.date+a.horaInicio).localeCompare(b.date+b.horaInicio));
+
+  const abrirNovo=(date,hora,salaId)=>{
+    const hh=hora!=null?String(Math.floor(hora)).padStart(2,"0")+":00":"09:00";
+    const hf=hora!=null?String(Math.floor(hora)+1).padStart(2,"0")+":00":"10:00";
+    setSlotPre({date:date||today(),horaInicio:hh,horaFim:hf,sala:salaId||salas[0]?.id});
+    setEditando(null);setModalAberto(true);
   };
-  const confirmarExcluir=(opcao)=>{
+  const abrirEditar=(r)=>{setEditando(r);setSlotPre(null);setModalAberto(true);};
+  const salvarReservas=async(geradas,isEdit)=>{
+    if(isEdit){
+      await setDoc(doc(db,"reservas",editando.id),geradas[0]);
+      setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
+    } else {
+      for(const g of geradas){
+        await setDoc(doc(db,"reservas",g.id),g);
+      }
+      setReservas(prev=>[...prev,...geradas]);
+    }
+  };
+  const confirmarExcluir=async(opcao)=>{
     const r=excluindo;
-    setReservas(prev=>{
-      if(opcao==="somente")return prev.filter(x=>x.id!==r.id);
-      if(opcao==="proximos")return prev.filter(x=>!(x.serieId===r.serieId&&x.date>=r.date));
-      if(opcao==="todos")return prev.filter(x=>x.serieId!==r.serieId);
-      return prev.filter(x=>x.id!==r.id);
-    });
+    let ids=[];
+    if(opcao==="somente")ids=[r.id];
+    else if(opcao==="proximos")ids=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date).map(x=>x.id);
+    else if(opcao==="todos")ids=reservas.filter(x=>x.serieId===r.serieId).map(x=>x.id);
+    else ids=[r.id];
+    for(const id of ids)await deleteDoc(doc(db,"reservas",id));
+    setReservas(prev=>prev.filter(x=>!ids.includes(x.id)));
     setExcluindo(null);
   };
-  const togglePago=(id)=>setReservas(prev=>prev.map(r=>r.id===id?{...r,pago:!r.pago}:r));
-  const lista=reservas.filter(r=>{
-    if(!isManager&&r.userId!==currentUser.id)return false;
-    if(filtroPro&&r.userId!==filtroPro)return false;
-    if(filtroDt&&r.date!==filtroDt)return false;
-    return true;
-  }).sort((a,b)=>(a.date+a.horaInicio).localeCompare(b.date+b.horaInicio));
+  const togglePago=async(id)=>{
+    const r=reservas.find(x=>x.id===id);if(!r)return;
+    const updated={...r,pago:!r.pago};
+    await setDoc(doc(db,"reservas",id),updated);
+    setReservas(prev=>prev.map(x=>x.id===id?updated:x));
+  };
+
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
-  const recLabel={unica:"",semanal:"↻ Semanal",quinzenal:"↻ Quinzenal",mensal:"↻ Mensal"};
+  const recLabel={unica:"",semanal:"↻ Semanal",quinzenal:"↻ Quinzenal",mensal_rec:"↻ Mensal"};
+
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
@@ -361,7 +400,7 @@ function AgendaView({reservas,setReservas,users,config,currentUser,isManager}){
           <Btn onClick={()=>abrirNovo()}>+ Reservar Sala</Btn>
         </div>
       </div>
-      <AlertasVencimento reservas={reservas}/>
+      <AlertasVencimento reservas={isManager?reservas:reservas.filter(r=>r.userId===userProfile.uid)}/>
       {viewMode==="semana"&&(
         <Card style={{marginBottom:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -369,36 +408,34 @@ function AgendaView({reservas,setReservas,users,config,currentUser,isManager}){
             <span style={{fontWeight:700,color:C.text,fontSize:14}}>Semana de {fmt(semanaBase)}</span>
             <div style={{display:"flex",gap:8}}><Btn variant="secondary" small onClick={()=>setSemOff(0)}>Hoje</Btn><Btn variant="secondary" small onClick={()=>setSemOff(o=>o+1)}>Próxima →</Btn></div>
           </div>
-          <GradeSemanal reservas={reservas} users={users} semanaBase={semanaBase} onSlotClick={(d,h,s)=>abrirNovo(d,h,s)} config={config}/>
+          <GradeSemanal reservas={reservas} semanaBase={semanaBase} onSlotClick={abrirNovo} config={config}/>
           <div style={{display:"flex",gap:12,marginTop:12,flexWrap:"wrap"}}>
             {salas.map(s=>(<div key={s.id} style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:s.cor}}/><span style={{fontSize:12,color:C.textMid}}>{s.label}</span></div>))}
-            <div style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:C.surfaceAlt,border:`1px solid ${C.border}`}}/><span style={{fontSize:12,color:C.muted}}>Disponível — clique para reservar</span></div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:C.surfaceAlt,border:`1px solid ${C.border}`}}/><span style={{fontSize:12,color:C.muted}}>Clique para reservar</span></div>
           </div>
         </Card>
       )}
       {viewMode==="lista"&&(
         <Card style={{marginBottom:20}}>
           <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-            {isManager&&<div style={{width:220}}><Field label="Profissional" value={filtroPro} onChange={setFiltroPro} options={[{value:"",label:"Todos"},...profissionais.map(p=>({value:p.id,label:p.name}))]}/></div>}
-            <div style={{width:160}}><Field label="Data" type="date" value={filtroDt} onChange={setFiltroDt}/></div>
+            <div style={{width:160}}><Field label="Filtrar por data" type="date" value={filtroDt} onChange={setFiltroDt}/></div>
             {filtroDt&&<div style={{display:"flex",alignItems:"flex-end",paddingBottom:14}}><Btn variant="ghost" small onClick={()=>setFiltroDt("")}>Limpar</Btn></div>}
           </div>
           {lista.length===0&&<p style={{color:C.muted,margin:0}}>Nenhuma reserva encontrada.</p>}
           {lista.map(r=>{
-            const u=users.find(u=>u.id===r.userId);const isOwn=r.userId===currentUser.id;
+            const isOwn=r.userId===userProfile.uid;
             return(
               <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${C.border}`}}>
-                <div style={{width:4,height:44,borderRadius:2,background:u?.color||C.accent,flexShrink:0}}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u?.name}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>{r.userName}</div>
                   <div style={{fontSize:12,color:C.textMid}}>{fmt(r.date)} · {r.horaInicio}–{r.horaFim} {r.modalidade==="online"?"💻":""}</div>
                 </div>
                 <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
                   <SalaTag salaId={r.sala} salas={salas}/>
                   <Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/>
-                  {r.recorrencia&&r.recorrencia!=="unica"&&<Badge label={recLabel[r.recorrencia]} bg={C.fixoLight} color={C.fixo}/>}
+                  {r.recorrencia&&r.recorrencia!=="unica"&&<Badge label={recLabel[r.recorrencia]||"↻"} bg={C.fixoLight} color={C.fixo}/>}
                   <Badge label={r.pago?"Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
-                  <span style={{fontSize:14,fontWeight:700,color:C.text}}>{fmtR(r.valor)}</span>
+                  <span style={{fontSize:14,fontWeight:700,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</span>
                   {isManager&&<Btn variant="success" small onClick={()=>togglePago(r.id)}>{r.pago?"✓ Pago":"Marcar Pago"}</Btn>}
                   {(isManager||isOwn)&&<Btn variant="secondary" small onClick={()=>abrirEditar(r)}>Editar</Btn>}
                   {(isManager||isOwn)&&<Btn variant="danger" small onClick={()=>setExcluindo(r)}>✕</Btn>}
@@ -408,15 +445,15 @@ function AgendaView({reservas,setReservas,users,config,currentUser,isManager}){
           })}
         </Card>
       )}
-      {modalAberto&&<ModalReserva onClose={()=>setModalAberto(false)} onSave={salvarReservas} reservas={reservas} config={config} userId={currentUser.id} editando={editando||null} inicial={editando?null:slotPre}/>}
+      {modalAberto&&<ModalReserva onClose={()=>setModalAberto(false)} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={editando} inicial={editando?null:slotPre}/>}
       {excluindo&&<ModalExcluir reserva={excluindo} onClose={()=>setExcluindo(null)} onConfirm={confirmarExcluir}/>}
     </div>
   );
 }
 
-function PendenciasView({reservas,currentUser,config}){
+function PendenciasView({reservas,userProfile,config}){
   const salas=config.salas||[];
-  const minhas=reservas.filter(r=>r.userId===currentUser.id).sort((a,b)=>b.date.localeCompare(a.date));
+  const minhas=reservas.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date));
   const pendente=minhas.filter(r=>!r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
   const pago=minhas.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
@@ -436,22 +473,28 @@ function PendenciasView({reservas,currentUser,config}){
             <div style={{fontSize:14,fontWeight:600,color:C.text}}>{fmt(r.date)} · {r.horaInicio}–{r.horaFim} {r.modalidade==="online"?"💻":""}</div>
             <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}><SalaTag salaId={r.sala} salas={salas}/><Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/></div>
           </div>
-          <div style={{textAlign:"right"}}><div style={{fontSize:15,fontWeight:800,color:C.text}}>{fmtR(r.valor)}</div><Badge label={r.pago?"✓ Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/></div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:15,fontWeight:800,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</div>
+            <Badge label={r.pago?"✓ Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
+          </div>
         </div>))}
       </Card>
     </div>
   );
 }
 
-function DashboardView({reservas,users,config}){
+function DashboardView({reservas,config}){
   const salas=config.salas||[];
   const mes=today().slice(0,7);
   const mesRes=reservas.filter(r=>r.date?.slice(0,7)===mes||(r.modo==="mensal"&&r.mesMensal===mes));
   const totalValor=mesRes.reduce((s,r)=>s+Number(r.valor||0),0);
   const totalPago=mesRes.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
   const hojRes=reservas.filter(r=>r.date===today()).sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
-  const profissionais=users.filter(u=>u.role==="professional");
-  const byPro=profissionais.map(pro=>{const rs=mesRes.filter(r=>r.userId===pro.id);return{...pro,reservas:rs.length,horas:rs.filter(r=>r.modo!=="mensal").reduce((s,r)=>s+calcHoras(r.horaInicio,r.horaFim),0),valor:rs.reduce((s,r)=>s+Number(r.valor||0),0),pago:rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0)};}).filter(p=>p.reservas>0);
+  const nomes={};reservas.forEach(r=>{if(r.userId&&r.userName)nomes[r.userId]=r.userName;});
+  const byUser=Object.entries(nomes).map(([uid,name])=>{
+    const rs=mesRes.filter(r=>r.userId===uid);
+    return{uid,name,reservas:rs.length,horas:rs.filter(r=>r.modo!=="mensal").reduce((s,r)=>s+calcHoras(r.horaInicio,r.horaFim),0),valor:rs.reduce((s,r)=>s+Number(r.valor||0),0),pago:rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0)};
+  }).filter(p=>p.reservas>0);
   const porSala=salas.map(s=>{const rs=mesRes.filter(r=>r.sala===s.id&&r.modo!=="mensal");return{...s,horas:rs.reduce((t,r)=>t+calcHoras(r.horaInicio,r.horaFim),0),reservas:rs.length};});
   return(
     <div>
@@ -466,39 +509,37 @@ function DashboardView({reservas,users,config}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:20}}>
         <Card>
           <h3 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>Hoje — {fmt(today())}</h3>
-          {hojRes.length===0?<p style={{color:C.muted,fontSize:14,margin:0}}>Nenhuma reserva hoje.</p>:hojRes.map(r=>{const u=users.find(u=>u.id===r.userId);return(<div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}><div style={{fontSize:13,color:C.textMid,minWidth:90,fontWeight:600}}>{r.horaInicio}–{r.horaFim}</div><div style={{flex:1,fontSize:13,color:C.text,fontWeight:600}}>{u?.name?.split(" ").slice(0,2).join(" ")} {r.modalidade==="online"?"💻":""}</div><SalaTag salaId={r.sala} salas={salas}/></div>);})}
+          {hojRes.length===0?<p style={{color:C.muted,fontSize:14,margin:0}}>Nenhuma reserva hoje.</p>:hojRes.map(r=>(<div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}><div style={{fontSize:13,color:C.textMid,minWidth:90,fontWeight:600}}>{r.horaInicio}–{r.horaFim}</div><div style={{flex:1,fontSize:13,color:C.text,fontWeight:600}}>{r.userName?.split(" ").slice(0,2).join(" ")} {r.modalidade==="online"?"💻":""}</div><SalaTag salaId={r.sala} salas={salas}/></div>))}
         </Card>
         <Card>
           <h3 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>Ocupação das salas</h3>
-          {porSala.map(s=>(<div key={s.id} style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600,color:s.cor}}>{s.label}</span><span style={{fontSize:12,color:C.textMid}}>{s.horas.toFixed(1)}h · {s.reservas} reservas</span></div><div style={{background:C.surfaceAlt,borderRadius:6,height:8}}><div style={{width:`${Math.min(s.horas/100*100,100)}%`,background:s.cor,borderRadius:6,height:8,transition:"width 0.4s"}}/></div></div>))}
+          {porSala.map(s=>(<div key={s.id} style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600,color:s.cor}}>{s.label}</span><span style={{fontSize:12,color:C.textMid}}>{s.horas.toFixed(1)}h</span></div><div style={{background:C.surfaceAlt,borderRadius:6,height:8}}><div style={{width:`${Math.min(s.horas/80*100,100)}%`,background:s.cor,borderRadius:6,height:8}}/></div></div>))}
         </Card>
       </div>
-      {byPro.length>0&&<Card><h3 style={{margin:"0 0 16px",color:C.text,fontSize:15,fontWeight:700}}>Por profissional</h3>{byPro.map(pro=>(<div key={pro.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}><div style={{width:8,height:8,borderRadius:"50%",background:pro.color||C.accent,flexShrink:0}}/><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{pro.name}</div><div style={{fontSize:11,color:C.muted}}>{pro.reservas} reservas · {pro.horas.toFixed(1)}h</div></div><div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{fmtR(pro.valor)}</div>{pro.valor-pro.pago>0&&<div style={{fontSize:11,color:C.warning}}>{fmtR(pro.valor-pro.pago)} pend.</div>}</div></div>))}</Card>}
+      {byUser.length>0&&<Card><h3 style={{margin:"0 0 16px",color:C.text,fontSize:15,fontWeight:700}}>Por profissional</h3>{byUser.map(pro=>(<div key={pro.uid} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{pro.name}</div><div style={{fontSize:11,color:C.muted}}>{pro.reservas} reservas · {pro.horas.toFixed(1)}h</div></div><div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{fmtR(pro.valor)}</div>{pro.valor-pro.pago>0&&<div style={{fontSize:11,color:C.warning}}>{fmtR(pro.valor-pro.pago)} pend.</div>}</div></div>))}</Card>}
     </div>
   );
 }
 
-function CobrancasView({reservas,setReservas,users,config}){
+function CobrancasView({reservas,setReservas,config}){
   const salas=config.salas||[];
   const[mes,setMes]=useState(new Date().getMonth());
   const[ano,setAno]=useState(new Date().getFullYear());
-  const[filtroPro,setFiltroPro]=useState("");
   const mesStr=`${ano}-${String(mes+1).padStart(2,"0")}`;
-  const profissionais=users.filter(u=>u.role==="professional");
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
-  const lista=reservas.filter(r=>{const noMes=(r.date?.slice(0,7)===mesStr)||(r.modo==="mensal"&&r.mesMensal===mesStr);if(!noMes)return false;if(filtroPro&&r.userId!==filtroPro)return false;return true;});
+  const lista=reservas.filter(r=>(r.date?.slice(0,7)===mesStr)||(r.modo==="mensal"&&r.mesMensal===mesStr));
   const totalValor=lista.reduce((s,r)=>s+Number(r.valor||0),0);
   const totalPago=lista.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
-  const togglePago=(id)=>setReservas(prev=>prev.map(r=>r.id===id?{...r,pago:!r.pago}:r));
-  const quitarTudo=(userId)=>{const ids=lista.filter(r=>r.userId===userId&&!r.pago).map(r=>r.id);setReservas(prev=>prev.map(r=>ids.includes(r.id)?{...r,pago:true}:r));};
-  const porPro=profissionais.map(pro=>{const rs=lista.filter(r=>r.userId===pro.id);if(!rs.length)return null;return{...pro,reservas:rs,total:rs.reduce((s,r)=>s+Number(r.valor||0),0),pago:rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0)};}).filter(Boolean);
+  const nomes={};reservas.forEach(r=>{if(r.userId&&r.userName)nomes[r.userId]=r.userName;});
+  const togglePago=async(id)=>{const r=reservas.find(x=>x.id===id);if(!r)return;const u={...r,pago:!r.pago};await setDoc(doc(db,"reservas",id),u);setReservas(prev=>prev.map(x=>x.id===id?u:x));};
+  const quitarTudo=async(userId)=>{const ids=lista.filter(r=>r.userId===userId&&!r.pago).map(r=>r.id);for(const id of ids){const r=reservas.find(x=>x.id===id);if(r){const u={...r,pago:true};await setDoc(doc(db,"reservas",id),u);}}setReservas(prev=>prev.map(r=>ids.includes(r.id)?{...r,pago:true}:r));};
+  const porUser=Object.entries(nomes).map(([uid,name])=>{const rs=lista.filter(r=>r.userId===uid);if(!rs.length)return null;return{uid,name,reservas:rs,total:rs.reduce((s,r)=>s+Number(r.valor||0),0),pago:rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0)};}).filter(Boolean);
   return(
     <div>
       <h2 style={{margin:"0 0 24px",color:C.text,fontSize:22,fontWeight:800}}>Cobranças</h2>
       <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"flex-end"}}>
         <div style={{width:140}}><Field label="Mês" value={mes} onChange={v=>setMes(Number(v))} options={MONTH_SHORT.map((n,i)=>({value:i,label:n}))}/></div>
         <div style={{width:90}}><Field label="Ano" value={ano} onChange={v=>setAno(Number(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:String(y)}))}/></div>
-        <div style={{width:220}}><Field label="Profissional" value={filtroPro} onChange={setFiltroPro} options={[{value:"",label:"Todos"},...profissionais.map(p=>({value:p.id,label:p.name}))]}/></div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:16,marginBottom:24}}>
         <Stat label="Total gerado" value={fmtR(totalValor)} color={C.text}/>
@@ -506,18 +547,21 @@ function CobrancasView({reservas,setReservas,users,config}){
         <Stat label="Pendente" value={fmtR(totalValor-totalPago)} color={C.warning}/>
         <Stat label="Reservas" value={lista.length} sub={`${lista.filter(r=>r.pago).length} quitadas`}/>
       </div>
-      {porPro.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhuma reserva neste período.</p></Card>}
-      {porPro.map(pro=>(<Card key={pro.id} style={{marginBottom:16}}>
+      {porUser.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhuma reserva neste período.</p></Card>}
+      {porUser.map(pro=>(<Card key={pro.uid} style={{marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:10,height:10,borderRadius:"50%",background:pro.color||C.accent}}/><span style={{fontWeight:700,color:C.text,fontSize:15}}>{pro.name}</span></div>
-          <div style={{display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:14,fontWeight:700,color:C.text}}>{fmtR(pro.total)}</span>{pro.total-pro.pago>0?<><span style={{fontSize:13,color:C.warning,fontWeight:600}}>{fmtR(pro.total-pro.pago)} pendente</span><Btn variant="success" small onClick={()=>quitarTudo(pro.id)}>Quitar tudo</Btn></>:<span style={{fontSize:13,color:C.success,fontWeight:600}}>✓ Quitado</span>}</div>
+          <span style={{fontWeight:700,color:C.text,fontSize:15}}>{pro.name}</span>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <span style={{fontSize:14,fontWeight:700,color:C.text}}>{fmtR(pro.total)}</span>
+            {pro.total-pro.pago>0?<><span style={{fontSize:13,color:C.warning,fontWeight:600}}>{fmtR(pro.total-pro.pago)} pendente</span><Btn variant="success" small onClick={()=>quitarTudo(pro.uid)}>Quitar tudo</Btn></>:<span style={{fontSize:13,color:C.success,fontWeight:600}}>✓ Quitado</span>}
+          </div>
         </div>
         {pro.reservas.map(r=>(<div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:`1px solid ${C.border}`}}>
           <div style={{fontSize:13,color:C.textMid,minWidth:86}}>{fmt(r.date)}</div>
           <SalaTag salaId={r.sala} salas={salas}/>
           <Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/>
           <span style={{flex:1}}/>
-          <span style={{fontSize:14,fontWeight:600,color:C.text}}>{fmtR(r.valor)}</span>
+          <span style={{fontSize:14,fontWeight:600,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</span>
           <button onClick={()=>togglePago(r.id)} style={{background:r.pago?C.successLight:C.warningLight,color:r.pago?C.success:C.warning,border:`1px solid ${r.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{r.pago?"✓ Pago":"Pendente"}</button>
         </div>))}
       </Card>))}
@@ -525,38 +569,73 @@ function CobrancasView({reservas,setReservas,users,config}){
   );
 }
 
-function ProfissionaisView({users,setUsers}){
+function ProfissionaisView(){
+  const[users,setUsers]=useState([]);
+  const[loading,setLoading]=useState(true);
   const[modal,setModal]=useState(false);
-  const[editando,setEditando]=useState(null);
-  const[form,setForm]=useState({name:"",specialty:"",color:"#1B6CA8",login:"",senha:"",role:"professional"});
+  const[form,setForm]=useState({nome:"",email:"",senha:"",role:"professional"});
   const[erro,setErro]=useState("");
-  const[mostrarSenha,setMostrarSenha]=useState({});
+  const[saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    const unsub=onSnapshot(collection(db,"users"),snap=>{
+      setUsers(snap.docs.map(d=>({id:d.id,...d.data()})));
+      setLoading(false);
+    });
+    return unsub;
+  },[]);
+
+  const cadastrar=async()=>{
+    setErro("");setSaving(true);
+    try{
+      const cred=await createUserWithEmailAndPassword(auth,form.email,form.senha);
+      await setDoc(doc(db,"users",cred.user.uid),{
+        uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,criadoEm:new Date().toISOString()
+      });
+      setModal(false);setForm({nome:"",email:"",senha:"",role:"professional"});
+    }catch(e){
+      if(e.code==="auth/email-already-in-use")setErro("Este e-mail já está cadastrado.");
+      else if(e.code==="auth/weak-password")setErro("A senha precisa ter pelo menos 6 caracteres.");
+      else setErro("Erro ao cadastrar. Tente novamente.");
+    }
+    setSaving(false);
+  };
+
   const profissionais=users.filter(u=>u.role==="professional");
-  const abrirNovo=()=>{setEditando(null);setForm({name:"",specialty:"",color:"#1B6CA8",login:"",senha:"",role:"professional"});setErro("");setModal(true);};
-  const abrirEditar=(u)=>{setEditando(u.id);setForm({...u,senha:""});setErro("");setModal(true);};
-  const salvar=()=>{setErro("");if(!form.name||!form.login)return setErro("Nome e login são obrigatórios.");if(!editando&&!form.senha)return setErro("Informe a senha inicial.");const dup=users.find(u=>u.login.toLowerCase()===form.login.toLowerCase()&&u.id!==editando);if(dup)return setErro("Login já está em uso.");if(editando)setUsers(prev=>prev.map(u=>u.id===editando?{...u,...form,senha:form.senha||u.senha,id:editando}:u));else setUsers(prev=>[...prev,{...form,id:uid()}]);setModal(false);};
-  const remover=(id)=>{if(window.confirm("Remover este profissional?"))setUsers(prev=>prev.filter(u=>u.id!==id));};
+  const gestores=users.filter(u=>u.role==="manager");
+
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><h2 style={{margin:0,color:C.text,fontSize:22,fontWeight:800}}>Profissionais</h2><Btn onClick={abrirNovo}>+ Cadastrar</Btn></div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {profissionais.map(pro=>(<Card key={pro.id} style={{display:"flex",alignItems:"center",gap:14}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:pro.color||C.accent,flexShrink:0}}/>
-          <div style={{flex:1}}><div style={{fontSize:15,fontWeight:700,color:C.text}}>{pro.name}</div><div style={{fontSize:12,color:C.textMid}}>{pro.specialty}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>Login: <strong>{pro.login}</strong> · Senha: {mostrarSenha[pro.id]?pro.senha:"••••••"} <button onClick={()=>setMostrarSenha(s=>({...s,[pro.id]:!s[pro.id]}))} style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:11}}>{mostrarSenha[pro.id]?"ocultar":"ver"}</button></div></div>
-          <Btn variant="secondary" small onClick={()=>abrirEditar(pro)}>Editar</Btn>
-          <Btn variant="danger" small onClick={()=>remover(pro.id)}>✕</Btn>
-        </Card>))}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0,color:C.text,fontSize:22,fontWeight:800}}>Profissionais</h2>
+        <Btn onClick={()=>{setModal(true);setErro("");}}>+ Cadastrar</Btn>
       </div>
-      {modal&&(<Modal title={editando?"Editar Profissional":"Novo Profissional"} onClose={()=>setModal(false)}>
-        <Field label="Nome completo *" value={form.name} onChange={v=>setForm(f=>({...f,name:v}))}/>
-        <Field label="Especialidade" value={form.specialty} onChange={v=>setForm(f=>({...f,specialty:v}))} placeholder="Ex: Psicologia Clínica"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <Field label="Login *" value={form.login} onChange={v=>setForm(f=>({...f,login:v}))} placeholder="nome.sobrenome"/>
-          <Field label={editando?"Nova senha":"Senha *"} type="password" value={form.senha} onChange={v=>setForm(f=>({...f,senha:v}))} placeholder="••••••••"/>
+      {loading?<p style={{color:C.muted}}>Carregando...</p>:(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {profissionais.map(u=>(<Card key={u.id} style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:C.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:C.accent,fontSize:14,flexShrink:0}}>
+              {u.nome?.charAt(0)?.toUpperCase()||"?"}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.text}}>{u.nome}</div>
+              <div style={{fontSize:12,color:C.muted}}>{u.email}</div>
+            </div>
+            <Badge label="Profissional" bg={C.accentLight} color={C.accent}/>
+          </Card>))}
+          {profissionais.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhum profissional cadastrado ainda.</p></Card>}
         </div>
-        <div><label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Cor</label><input type="color" value={form.color} onChange={e=>setForm(f=>({...f,color:e.target.value}))} style={{width:48,height:36,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer"}}/></div>
-        {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,margin:"12px 0"}}>{erro}</div>}
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:14}}><Btn variant="secondary" onClick={()=>setModal(false)}>Cancelar</Btn><Btn onClick={salvar}>{editando?"Salvar":"Cadastrar"}</Btn></div>
+      )}
+      {modal&&(<Modal title="Cadastrar Profissional" onClose={()=>setModal(false)}>
+        <p style={{color:C.textMid,fontSize:14,margin:"0 0 16px"}}>O profissional receberá acesso com este e-mail e senha.</p>
+        <Field label="Nome completo *" value={form.nome} onChange={v=>setForm(f=>({...f,nome:v}))} placeholder="Nome Sobrenome"/>
+        <Field label="E-mail *" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} placeholder="nome@email.com"/>
+        <Field label="Senha inicial *" type="password" value={form.senha} onChange={v=>setForm(f=>({...f,senha:v}))} placeholder="Mínimo 6 caracteres" helper="O profissional usará esta senha para entrar"/>
+        <Field label="Tipo de acesso" value={form.role} onChange={v=>setForm(f=>({...f,role:v}))} options={[{value:"professional",label:"Profissional"},{value:"manager",label:"Gestor"}]}/>
+        {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:12}}>{erro}</div>}
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <Btn variant="secondary" onClick={()=>setModal(false)}>Cancelar</Btn>
+          <Btn onClick={cadastrar} disabled={saving}>{saving?"Cadastrando...":"Cadastrar"}</Btn>
+        </div>
       </Modal>)}
     </div>
   );
@@ -566,7 +645,11 @@ function ConfigView({config,setConfig}){
   const[form,setForm]=useState(JSON.parse(JSON.stringify(config)));
   const[salvo,setSalvo]=useState(false);
   const[novasSalas,setNovasSalas]=useState(form.salas||[]);
-  const salvar=()=>{setConfig({...form,salas:novasSalas});setSalvo(true);setTimeout(()=>setSalvo(false),2000);};
+  const salvar=async()=>{
+    const novo={...form,salas:novasSalas};
+    await setDoc(doc(db,"config","main"),novo);
+    setConfig(novo);setSalvo(true);setTimeout(()=>setSalvo(false),2000);
+  };
   const setPeriodo=(k,campo,val)=>setForm(f=>({...f,periodos:{...f.periodos,[k]:{...f.periodos[k],[campo]:val}}}));
   const addSala=()=>setNovasSalas(s=>[...s,{id:uid(),label:`Sala ${s.length+1}`,cor:"#6366F1",corLight:"#EEF2FF"}]);
   const removeSala=(id)=>{if(novasSalas.length<=1)return alert("Precisa ter ao menos uma sala.");setNovasSalas(s=>s.filter(x=>x.id!==id));};
@@ -590,7 +673,7 @@ function ConfigView({config,setConfig}){
           <h3 style={{margin:0,color:C.text,fontSize:16,fontWeight:700}}>Salas</h3>
           <Btn small onClick={addSala}>+ Nova Sala</Btn>
         </div>
-        {novasSalas.map((s,i)=>(<div key={s.id} style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,padding:12,background:C.surfaceAlt,borderRadius:10}}>
+        {novasSalas.map(s=>(<div key={s.id} style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,padding:12,background:C.surfaceAlt,borderRadius:10}}>
           <input value={s.label} onChange={e=>editSala(s.id,"label",e.target.value)} style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 10px",fontSize:14,fontFamily:"inherit",color:C.text}}/>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
             <label style={{fontSize:10,color:C.muted}}>Cor</label>
@@ -602,25 +685,19 @@ function ConfigView({config,setConfig}){
       <Card style={{marginBottom:20}}>
         <h3 style={{margin:"0 0 16px",color:C.text,fontSize:16,fontWeight:700}}>Valores de sublocação</h3>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-          <div>
-            <Field label="Hora avulsa (R$/h)" type="number" value={form.valorHoraAvulsa} onChange={v=>setForm(f=>({...f,valorHoraAvulsa:Number(v)}))} helper={`Exemplo: 2h = ${fmtR((form.valorHoraAvulsa||0)*2)}`}/>
-          </div>
+          <Field label="Hora avulsa (R$/h)" type="number" value={form.valorHoraAvulsa} onChange={v=>setForm(f=>({...f,valorHoraAvulsa:Number(v)}))} helper={`Exemplo: 2h = ${fmtR((form.valorHoraAvulsa||0)*2)}`}/>
           <div>
             <div style={{fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Mensalidade</div>
             <div style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",fontSize:14,color:C.muted,fontStyle:"italic"}}>A combinar com gestores</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:4}}>Não tem valor fixo — combinar direto</div>
           </div>
         </div>
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16}}>
           <div style={{fontSize:13,color:C.textMid,marginBottom:12,fontWeight:600}}>Períodos do dia — valores fixos</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}>
             {Object.entries(form.periodos).map(([k,p])=>(<div key={k} style={{background:C.surfaceAlt,borderRadius:10,padding:14,border:`1px solid ${C.border}`}}>
-              <Field label="Nome do período" value={p.label} onChange={v=>setPeriodo(k,"label",v)}/>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <Field label="Início" type="time" value={p.inicio} onChange={v=>setPeriodo(k,"inicio",v)}/>
-                <Field label="Fim" type="time" value={p.fim} onChange={v=>setPeriodo(k,"fim",v)}/>
-              </div>
-              <Field label="Valor do período (R$)" type="number" value={p.valor||0} onChange={v=>setPeriodo(k,"valor",Number(v))}/>
+              <Field label="Nome" value={p.label} onChange={v=>setPeriodo(k,"label",v)}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Field label="Início" type="time" value={p.inicio} onChange={v=>setPeriodo(k,"inicio",v)}/><Field label="Fim" type="time" value={p.fim} onChange={v=>setPeriodo(k,"fim",v)}/></div>
+              <Field label="Valor (R$)" type="number" value={p.valor||0} onChange={v=>setPeriodo(k,"valor",Number(v))}/>
               <div style={{background:C.accentLight,borderRadius:8,padding:"7px 12px",fontSize:13,color:C.accent,fontWeight:700,textAlign:"center"}}>{p.label}: {fmtR(p.valor||0)}</div>
             </div>))}
           </div>
@@ -631,44 +708,71 @@ function ConfigView({config,setConfig}){
 }
 
 export default function App(){
-  const[carregando,setCarregando]=useState(true);
-  const[usuario,setUsuario]=useState(null);
+  const[authUser,setAuthUser]=useState(undefined);
+  const[userProfile,setUserProfile]=useState(null);
+  const[reservas,setReservas]=useState([]);
+  const[config,setConfig]=useState(DEFAULT_CONFIG);
   const[view,setView]=useState("dashboard");
-  const[users,setUsers_]=useState(INITIAL_USERS);
-  const[reservas,setReservas_]=useState([]);
-  const[config,setConfig_]=useState(DEFAULT_CONFIG);
-  const setUsers=useCallback(fn=>{setUsers_(p=>{const n=typeof fn==="function"?fn(p):fn;save("users_v5",n);return n;});},[]);
-  const setReservas=useCallback(fn=>{setReservas_(p=>{const n=typeof fn==="function"?fn(p):fn;save("reservas_v5",n);return n;});},[]);
-  const setConfig=useCallback(fn=>{setConfig_(p=>{const n=typeof fn==="function"?fn(p):fn;save("config_v5",n);return n;});},[]);
+  const[loadingData,setLoadingData]=useState(true);
+
   useEffect(()=>{
-    const u=load("users_v5",INITIAL_USERS);
-    const r=load("reservas_v5",[]);
-    const c=load("config_v5",DEFAULT_CONFIG);
-    setUsers_(u);setReservas_(r);setConfig_(c);setCarregando(false);
+    const unsub=auth.onAuthStateChanged(async user=>{
+      setAuthUser(user);
+      if(user){
+        const snap=await getDoc(doc(db,"users",user.uid));
+        if(snap.exists())setUserProfile({uid:user.uid,...snap.data()});
+        else setUserProfile({uid:user.uid,email:user.email,nome:user.displayName||user.email,role:"professional"});
+      } else {
+        setUserProfile(null);
+      }
+    });
+    return unsub;
   },[]);
-  const isManager=usuario?.role==="manager";
-  const handleLogin=(u)=>{setUsuario(u);setView(u.role==="manager"?"dashboard":"agenda");};
-  if(carregando)return<div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontFamily:"system-ui"}}>Carregando...</div>;
-  if(!usuario)return<LoginScreen users={users} onLogin={handleLogin}/>;
+
+  useEffect(()=>{
+    if(!authUser)return;
+    const unsubR=onSnapshot(collection(db,"reservas"),snap=>{
+      setReservas(snap.docs.map(d=>({id:d.id,...d.data()})));
+    });
+    const loadConfig=async()=>{
+      const snap=await getDoc(doc(db,"config","main"));
+      if(snap.exists())setConfig(snap.data());
+      setLoadingData(false);
+    };
+    loadConfig();
+    return()=>unsubR();
+  },[authUser]);
+
+  useEffect(()=>{
+    if(userProfile)setView(userProfile.role==="manager"?"dashboard":"agenda");
+  },[userProfile]);
+
+  const isManager=userProfile?.role==="manager";
+
+  if(authUser===undefined)return<div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontFamily:"system-ui"}}>Carregando...</div>;
+  if(!authUser||!userProfile)return<LoginScreen onLogin={()=>{}}/>;
+  if(loadingData)return<div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontFamily:"system-ui"}}>Carregando dados...</div>;
+
   const navManager=[{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"agenda",icon:"📅",label:"Agenda"},{id:"cobrancas",icon:"💰",label:"Cobranças"},{id:"profissionais",icon:"👥",label:"Profissionais"},{id:"configuracoes",icon:"⚙️",label:"Configurações"}];
   const navPro=[{id:"agenda",icon:"📅",label:"Reservar Sala"},{id:"pendencias",icon:"💰",label:"Minhas Pendências"}];
   const navItems=isManager?navManager:navPro;
+
   return(
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
       <div style={{width:220,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",position:"fixed",top:0,bottom:0,left:0,zIndex:100}}>
         <div style={{padding:"20px 20px 16px",borderBottom:`1px solid ${C.border}`}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}><div style={{width:30,height:30,background:C.accent,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>🏥</div><span style={{fontWeight:800,color:C.text,fontSize:15}}>{config.nomeClinica}</span></div>
-          <div style={{fontSize:11,color:C.muted,paddingLeft:40}}>{isManager?"Gestor":usuario.name?.split(" ").slice(0,2).join(" ")}</div>
+          <div style={{fontSize:11,color:C.muted,paddingLeft:40}}>{userProfile?.nome?.split(" ").slice(0,2).join(" ")||userProfile?.email}</div>
         </div>
         <nav style={{flex:1,padding:"8px 0"}}>{navItems.map(item=>{const active=view===item.id;return(<button key={item.id} onClick={()=>setView(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 20px",background:active?C.accentLight:"transparent",border:"none",borderLeft:`3px solid ${active?C.accent:"transparent"}`,cursor:"pointer",color:active?C.accent:C.textMid,fontFamily:"inherit",fontSize:14,fontWeight:active?700:500,textAlign:"left"}}><span>{item.icon}</span>{item.label}</button>);})}</nav>
-        <div style={{padding:"12px 20px",borderTop:`1px solid ${C.border}`}}><button onClick={()=>{setUsuario(null);setView("dashboard");}} style={{fontSize:13,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>← Sair</button></div>
+        <div style={{padding:"12px 20px",borderTop:`1px solid ${C.border}`}}><button onClick={()=>signOut(auth)} style={{fontSize:13,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>← Sair</button></div>
       </div>
       <div style={{marginLeft:220,flex:1,padding:32,maxWidth:"calc(100% - 220px)"}}>
-        {view==="dashboard"&&isManager&&<DashboardView reservas={reservas} users={users} config={config}/>}
-        {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} users={users} config={config} currentUser={usuario} isManager={isManager}/>}
-        {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} users={users} config={config}/>}
-        {view==="pendencias"&&!isManager&&<PendenciasView reservas={reservas} currentUser={usuario} config={config}/>}
-        {view==="profissionais"&&isManager&&<ProfissionaisView users={users} setUsers={setUsers}/>}
+        {view==="dashboard"&&isManager&&<DashboardView reservas={reservas} config={config}/>}
+        {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} userProfile={userProfile} config={config} isManager={isManager}/>}
+        {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} config={config}/>}
+        {view==="pendencias"&&!isManager&&<PendenciasView reservas={reservas} userProfile={userProfile} config={config}/>}
+        {view==="profissionais"&&isManager&&<ProfissionaisView/>}
         {view==="configuracoes"&&isManager&&<ConfigView config={config} setConfig={setConfig}/>}
       </div>
     </div>
