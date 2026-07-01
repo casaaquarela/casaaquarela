@@ -183,7 +183,7 @@ function ModalReserva({onClose,onSave,reservas,config,userId,editando}){
   const hStart=horaParaMin(config.horaInicio||"08:00");
   const hEnd=horaParaMin(config.horaFim||"21:00");
   const horaOptions=[];
-  for(let m=hStart;m<=hEnd;m+=30){const h=Math.floor(m/60),mm=m%60;horaOptions.push({value:`${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`,label:`${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`);}
+  for(let m=hStart;m<=hEnd;m+=30){const hh=Math.floor(m/60),mn=m%60;const ts=String(hh).padStart(2,"0")+":"+String(mn).padStart(2,"0");horaOptions.push({value:ts,label:ts});}
 
   let horaInicio="",horaFim="",valor=0,resumo="";
   if(modo==="avulsa"){horaInicio=hIni;horaFim=hFim;const h=calcHoras(hIni,hFim);valor=+(h*config.valorHoraAvulsa).toFixed(2);resumo=`${h>0?h.toFixed(1):"?"}h × ${fmtR(config.valorHoraAvulsa)}/h = ${fmtR(valor)}`;}
