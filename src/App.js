@@ -146,9 +146,8 @@ function LoginScreen({onLogin}){
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,-apple-system,sans-serif",padding:20}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{width:64,height:64,background:C.accent,borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 14px"}}>🏥</div>
-          <h1 style={{color:C.text,margin:"0 0 4px",fontSize:24,fontWeight:800}}>Casa Aquarela</h1>
-          <p style={{color:C.muted,margin:0,fontSize:14}}>Agenda & Salas</p>
+          <img src="/logo-verde.jpg" alt="Casa Aquarela" style={{width:160,height:160,objectFit:"contain",margin:"0 auto 8px",display:"block"}}/>
+          <p style={{color:C.muted,margin:0,fontSize:13}}>Agenda & Salas</p>
         </div>
         <Card>
           <Field label="E-mail" type="email" value={email} onChange={setEmail} placeholder="seu@email.com"/>
@@ -845,8 +844,8 @@ export default function App(){
       {/* Header mobile e desktop */}
       <div style={{background:C.accent,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 8px #00000022"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:28,height:28,background:"#ffffff33",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🏥</div>
-          <span style={{fontWeight:800,color:"#fff",fontSize:16}}>{config.nomeClinica}</span>
+          <img src="/logo-amarelo.jpg" alt="Casa Aquarela" style={{width:36,height:36,objectFit:"contain",borderRadius:8,background:"#fff"}}/>
+          <span style={{fontWeight:800,color:"#fff",fontSize:15}}>{config.nomeClinica}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <span style={{fontSize:12,color:"#ffffffcc"}}>{userProfile?.nome?.split(" ")[0]||userProfile?.email?.split("@")[0]}</span>
