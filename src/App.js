@@ -324,11 +324,15 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,config}){
                 const corPro=r?.userColor||sala.cor;
                 const corProLight=r?.userColorLight||(corPro+"22");
                 return(
-                  <td key={d+sala.id+h} onClick={!r?()=>onSlotClick(d,h,sala.id):undefined}
-                    style={{border:`1px solid ${C.border}`,padding:2,verticalAlign:"top",height:26,background:r?corProLight:C.surfaceAlt,cursor:r?"default":"pointer"}}>
-                    {isFirst&&(<div style={{background:corPro,color:"#fff",borderRadius:3,padding:"2px 3px",fontSize:9,fontWeight:600,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
-                      {nome.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
-                    </div>)}
+                  <td key={d+sala.id+h}
+                    onClick={r ? ()=>onBlockClick&&onBlockClick(r) : ()=>onSlotClick(d,h,sala.id)}
+                    style={{border:`1px solid ${corPro}44`,padding:0,verticalAlign:"top",height:26,
+                      background:r?corPro:C.surfaceAlt,cursor:"pointer"}}>
+                    {isFirst&&(
+                      <div style={{background:"rgba(0,0,0,0.18)",color:"#fff",padding:"2px 4px",fontSize:9,fontWeight:700,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
+                        {nome.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
+                      </div>
+                    )}
                   </td>
                 );
               }))}
