@@ -744,21 +744,38 @@ export default function App(){
   if(!authUser||!userProfile)return<LoginScreen onLogin={()=>{}}/>;
   if(loadingData)return<div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontFamily:"system-ui"}}>Carregando dados...</div>;
 
-  const navManager=[{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"agenda",icon:"📅",label:"Agenda"},{id:"cobrancas",icon:"💰",label:"Cobranças"},{id:"profissionais",icon:"👥",label:"Profissionais"},{id:"configuracoes",icon:"⚙️",label:"Configurações"}];
-  const navPro=[{id:"agenda",icon:"📅",label:"Reservar Sala"},{id:"pendencias",icon:"💰",label:"Minhas Pendências"}];
+  const navManager=[{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"agenda",icon:"📅",label:"Agenda"},{id:"cobrancas",icon:"💰",label:"Cobranças"},{id:"profissionais",icon:"👥",label:"Profissionais"},{id:"configuracoes",icon:"⚙️",label:"Config"}];
+  const navPro=[{id:"agenda",icon:"📅",label:"Reservar"},{id:"pendencias",icon:"💰",label:"Pendências"}];
   const navItems=isManager?navManager:navPro;
+  const isMobile=window.innerWidth<768;
 
   return(
-    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif",display:"flex"}}>
-      <div style={{width:220,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",position:"fixed",top:0,bottom:0,left:0,zIndex:100}}>
-        <div style={{padding:"20px 20px 16px",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}><div style={{width:30,height:30,background:C.accent,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>🏥</div><span style={{fontWeight:800,color:C.text,fontSize:15}}>{config.nomeClinica}</span></div>
-          <div style={{fontSize:11,color:C.muted,paddingLeft:40}}>{userProfile?.nome?.split(" ").slice(0,2).join(" ")||userProfile?.email}</div>
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif"}}>
+      {/* Header mobile e desktop */}
+      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:28,height:28,background:C.accent,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🏥</div>
+          <span style={{fontWeight:800,color:C.text,fontSize:15}}>{config.nomeClinica}</span>
         </div>
-        <nav style={{flex:1,padding:"8px 0"}}>{navItems.map(item=>{const active=view===item.id;return(<button key={item.id} onClick={()=>setView(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 20px",background:active?C.accentLight:"transparent",border:"none",borderLeft:`3px solid ${active?C.accent:"transparent"}`,cursor:"pointer",color:active?C.accent:C.textMid,fontFamily:"inherit",fontSize:14,fontWeight:active?700:500,textAlign:"left"}}><span>{item.icon}</span>{item.label}</button>);})}</nav>
-        <div style={{padding:"12px 20px",borderTop:`1px solid ${C.border}`}}><button onClick={()=>signOut(auth)} style={{fontSize:13,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>← Sair</button></div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:C.muted}}>{userProfile?.nome?.split(" ")[0]||userProfile?.email?.split("@")[0]}</span>
+          <button onClick={()=>signOut(auth)} style={{fontSize:12,color:C.danger,background:"none",border:`1px solid ${C.danger}33`,borderRadius:6,cursor:"pointer",fontFamily:"inherit",padding:"4px 10px",fontWeight:600}}>Sair</button>
+        </div>
       </div>
-      <div style={{marginLeft:220,flex:1,padding:32,maxWidth:"calc(100% - 220px)"}}>
+
+      {/* Nav horizontal */}
+      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,overflowX:"auto",whiteSpace:"nowrap"}}>
+        <div style={{display:"inline-flex",padding:"0 8px"}}>
+          {navItems.map(item=>{const active=view===item.id;return(
+            <button key={item.id} onClick={()=>setView(item.id)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"12px 14px",background:"transparent",border:"none",borderBottom:`3px solid ${active?C.accent:"transparent"}`,cursor:"pointer",color:active?C.accent:C.textMid,fontFamily:"inherit",fontSize:13,fontWeight:active?700:500,whiteSpace:"nowrap"}}>
+              <span>{item.icon}</span><span>{item.label}</span>
+            </button>
+          );})}
+        </div>
+      </div>
+
+      {/* Conteúdo */}
+      <div style={{padding:"20px 16px",maxWidth:900,margin:"0 auto"}}>
         {view==="dashboard"&&isManager&&<DashboardView reservas={reservas} config={config}/>}
         {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} userProfile={userProfile} config={config} isManager={isManager}/>}
         {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} config={config}/>}
