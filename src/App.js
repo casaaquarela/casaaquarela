@@ -1,21 +1,8 @@
 /* eslint-disable no-restricted-globals */
-import { useState, useEffect, useCallback } from "react";
-import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyBe-NXMNR-_dqDfBTO8dcfeNhBbaQ9okCI",
-  authDomain: "casa-aquarela-sistema.firebaseapp.com",
-  projectId: "casa-aquarela-sistema",
-  storageBucket: "casa-aquarela-sistema.firebasestorage.app",
-  messagingSenderId: "830950690226",
-  appId: "1:830950690226:web:fdd49058ff5cec27d9a8ab"
-};
-
-const firebaseApp = initializeApp(firebaseConfig);
-const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
+import { useState, useEffect } from "react";
+import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "firebase/firestore";
+import { auth, db } from "./firebase";
 
 const C = {
   bg:"#F4F6FA",white:"#FFFFFF",surface:"#FFFFFF",surfaceAlt:"#F0F2F7",border:"#E2E6EF",
@@ -602,7 +589,6 @@ function ProfissionaisView(){
   };
 
   const profissionais=users.filter(u=>u.role==="professional");
-  const gestores=users.filter(u=>u.role==="manager");
 
   return(
     <div>
