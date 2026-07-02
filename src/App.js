@@ -64,6 +64,26 @@ const gerarRecorrentes=(base,recorrencia)=>{
 };
 
 
+
+const calcMulta=(reserva)=>{
+  if(!reserva.date||!reserva.horaInicio)return{multa:0,pct:0,msg:"Sem cobrança"};
+  const agora=new Date();
+  const dataReserva=new Date(reserva.date+"T"+reserva.horaInicio+":00");
+  const diffHoras=(dataReserva-agora)/(1000*60*60);
+  const valor=Number(reserva.valor||0);
+  if(diffHoras>=24)return{multa:0,pct:0,msg:"Cancelamento gratuito (mais de 24h de antecedência)"};
+  if(diffHoras>=12)return{multa:valor*0.5,pct:50,msg:`Cancelamento com 50% de multa (entre 12h e 24h de antecedência)`};
+  if(diffHoras>0)return{multa:valor,pct:100,msg:`Cancelamento com 100% de multa (menos de 12h de antecedência)`};
+  return{multa:valor,pct:100,msg:"Ausência — 100% do valor será cobrado"};
+};
+
+const vencimentoMes=(mesStr)=>{
+  const [ano,mes]=mesStr.split("-").map(Number);
+  const proximoMes=mes===12?1:mes+1;
+  const proximoAno=mes===12?ano+1:ano;
+  return `${proximoAno}-${String(proximoMes).padStart(2,"0")}-05`;
+};
+
 const cleanObj=(obj)=>Object.fromEntries(Object.entries(obj).filter(([,v])=>v!==undefined));
 
 const Card=({children,style={}})=>(<div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20,...style}}>{children}</div>);
@@ -336,11 +356,42 @@ function AlertasVencimento({reservas}){
   );
 }
 
+
+function ModalCancelamento({reserva,onClose,onConfirm}){
+  const{multa,pct,msg}=calcMulta(reserva);
+  const valor=Number(reserva.valor||0);
+  return(
+    <Modal title="Cancelar Reserva" onClose={onClose}>
+      <div style={{background:C.surfaceAlt,borderRadius:10,padding:16,marginBottom:16}}>
+        <div style={{fontSize:13,color:C.textMid,marginBottom:8}}>
+          <strong>Reserva:</strong> {fmt(reserva.date)} · {reserva.horaInicio}–{reserva.horaFim}
+        </div>
+        <div style={{fontSize:13,color:C.textMid}}><strong>Valor:</strong> {fmtR(valor)}</div>
+      </div>
+      <div style={{background:pct===0?C.successLight:C.dangerLight,border:`1px solid ${pct===0?C.success:C.danger}44`,borderRadius:10,padding:14,marginBottom:16}}>
+        <div style={{fontWeight:700,color:pct===0?C.success:C.danger,marginBottom:4,fontSize:14}}>
+          {pct===0?"✓ Cancelamento gratuito":`⚠️ Multa de ${pct}%`}
+        </div>
+        <div style={{fontSize:13,color:C.textMid}}>{msg}</div>
+        {multa>0&&<div style={{fontSize:16,fontWeight:800,color:C.danger,marginTop:8}}>Valor da multa: {fmtR(multa)}</div>}
+      </div>
+      <p style={{fontSize:13,color:C.textMid,margin:"0 0 16px"}}>
+        {multa>0?"A multa será lançada automaticamente no seu financeiro.":"A reserva será cancelada sem cobrança."}
+      </p>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <Btn variant="secondary" onClick={onClose}>Voltar</Btn>
+        <Btn variant="danger" onClick={()=>onConfirm(multa)}>Confirmar Cancelamento</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[semOff,setSemOff]=useState(0);
   const[modalAberto,setModalAberto]=useState(false);
   const[editando,setEditando]=useState(null);
   const[excluindo,setExcluindo]=useState(null);
+  const[cancelando,setCancelando]=useState(null);
   const[slotPre,setSlotPre]=useState(null);
   const[viewMode,setViewMode]=useState("semana");
   const[filtroDt,setFiltroDt]=useState("");
@@ -379,6 +430,15 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     setReservas(prev=>prev.filter(x=>!ids.includes(x.id)));
     setExcluindo(null);
   };
+
+  const confirmarCancelamento=async(multa)=>{
+    const r=cancelando;
+    const updated=cleanObj({...r,status:"cancelado",multa:multa||0,canceladoEm:new Date().toISOString()});
+    await setDoc(doc(db,"reservas",r.id),updated);
+    setReservas(prev=>prev.map(x=>x.id===r.id?updated:x));
+    setCancelando(null);
+  };
+
   const togglePago=async(id)=>{
     const r=reservas.find(x=>x.id===id);if(!r)return;
     const updated={...r,pago:!r.pago};
@@ -423,21 +483,27 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
           {lista.length===0&&<p style={{color:C.muted,margin:0}}>Nenhuma reserva encontrada.</p>}
           {lista.map(r=>{
             const isOwn=r.userId===userProfile.uid;
+            const cancelado=r.status==="cancelado";
             return(
-              <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${C.border}`,opacity:cancelado?0.6:1}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:14,fontWeight:700,color:C.text}}>{r.userName}</div>
                   <div style={{fontSize:12,color:C.textMid}}>{fmt(r.date)} · {r.horaInicio}–{r.horaFim} {r.modalidade==="online"?"💻":""}</div>
+                  {cancelado&&r.multa>0&&<div style={{fontSize:11,color:C.danger,fontWeight:600}}>Multa: {fmtR(r.multa)}</div>}
                 </div>
                 <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
                   <SalaTag salaId={r.sala} salas={salas}/>
                   <Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/>
                   {r.recorrencia&&r.recorrencia!=="unica"&&<Badge label={recLabel[r.recorrencia]||"↻"} bg={C.fixoLight} color={C.fixo}/>}
-                  <Badge label={r.pago?"Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
+                  {cancelado
+                    ? <Badge label="Cancelado" bg={C.dangerLight} color={C.danger}/>
+                    : <Badge label={r.pago?"Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
+                  }
                   <span style={{fontSize:14,fontWeight:700,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</span>
-                  {isManager&&<Btn variant="success" small onClick={()=>togglePago(r.id)}>{r.pago?"✓ Pago":"Marcar Pago"}</Btn>}
-                  {(isManager||isOwn)&&<Btn variant="secondary" small onClick={()=>abrirEditar(r)}>Editar</Btn>}
-                  {(isManager||isOwn)&&<Btn variant="danger" small onClick={()=>setExcluindo(r)}>✕</Btn>}
+                  {isManager&&!cancelado&&<Btn variant="success" small onClick={()=>togglePago(r.id)}>{r.pago?"✓ Pago":"Marcar Pago"}</Btn>}
+                  {(isManager||isOwn)&&!cancelado&&<Btn variant="secondary" small onClick={()=>abrirEditar(r)}>Editar</Btn>}
+                  {!cancelado&&isOwn&&<Btn variant="warning" small onClick={()=>setCancelando(r)}>Cancelar</Btn>}
+                  {isManager&&<Btn variant="danger" small onClick={()=>setExcluindo(r)}>✕</Btn>}
                 </div>
               </div>
             );
@@ -446,6 +512,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
       )}
       {modalAberto&&<ModalReserva onClose={()=>setModalAberto(false)} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={editando} inicial={editando?null:slotPre}/>}
       {excluindo&&<ModalExcluir reserva={excluindo} onClose={()=>setExcluindo(null)} onConfirm={confirmarExcluir}/>}
+      {cancelando&&<ModalCancelamento reserva={cancelando} onClose={()=>setCancelando(null)} onConfirm={confirmarCancelamento}/>}
     </div>
   );
 }
@@ -540,6 +607,9 @@ function CobrancasView({reservas,setReservas,config}){
         <div style={{width:140}}><Field label="Mês" value={mes} onChange={v=>setMes(Number(v))} options={MONTH_SHORT.map((n,i)=>({value:i,label:n}))}/></div>
         <div style={{width:90}}><Field label="Ano" value={ano} onChange={v=>setAno(Number(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:String(y)}))}/></div>
       </div>
+      <div style={{background:C.warningLight,border:`1px solid ${C.warning}33`,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:C.textMid}}>
+        📅 Vencimento das reservas de <strong>{MONTH_FULL[mes]}/{ano}</strong>: <strong style={{color:C.danger}}>{fmt(vencimentoMes(mesStr))}</strong>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:16,marginBottom:24}}>
         <Stat label="Total gerado" value={fmtR(totalValor)} color={C.text}/>
         <Stat label="Recebido" value={fmtR(totalPago)} color={C.success}/>
@@ -560,8 +630,14 @@ function CobrancasView({reservas,setReservas,config}){
           <SalaTag salaId={r.sala} salas={salas}/>
           <Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/>
           <span style={{flex:1}}/>
-          <span style={{fontSize:14,fontWeight:600,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</span>
-          <button onClick={()=>togglePago(r.id)} style={{background:r.pago?C.successLight:C.warningLight,color:r.pago?C.success:C.warning,border:`1px solid ${r.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{r.pago?"✓ Pago":"Pendente"}</button>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:14,fontWeight:600,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</div>
+            {r.status==="cancelado"&&r.multa>0&&<div style={{fontSize:11,color:C.danger,fontWeight:600}}>Multa: {fmtR(r.multa)}</div>}
+          </div>
+          {r.status==="cancelado"
+            ? <Badge label="Cancelado" bg={C.dangerLight} color={C.danger}/>
+            : <button onClick={()=>togglePago(r.id)} style={{background:r.pago?C.successLight:C.warningLight,color:r.pago?C.success:C.warning,border:`1px solid ${r.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{r.pago?"✓ Pago":"Pendente"}</button>
+          }
         </div>))}
       </Card>))}
     </div>
