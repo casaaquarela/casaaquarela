@@ -5,15 +5,12 @@ import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "firebase
 import { auth, db } from "./firebase";
 
 const C = {
-  bg:"#F5F0E8",white:"#FFFDF7",surface:"#FFFDF7",surfaceAlt:"#EDE8DC",border:"#DDD5C0",
-  accent:"#B5590A",accentLight:"#FDEFD8",text:"#2C1A0E",textMid:"#5C4033",muted:"#A08C7A",
-  danger:"#C0392B",dangerLight:"#FDECEA",success:"#4A7C4E",successLight:"#E8F5E9",
-  warning:"#C07A00",warningLight:"#FFF8E1",fixo:"#6B4F9E",fixoLight:"#F0EBF8",
-  // Paleta Aquarela
-  mostarda:"#C8962A",mostardaLight:"#FDF3D0",
-  verde:"#4A7C4E",verdeLight:"#E8F5E9",
-  terracota:"#B5590A",terracotaLight:"#FDEFD8",
-  bege:"#E8DFC8",begeText:"#5C4033",
+  bg:"#F7F4EE",white:"#FFFFFF",surface:"#FFFFFF",surfaceAlt:"#F0EBE0",border:"#DDD5C0",
+  accent:"#E8A830",accentLight:"#FEF6E0",text:"#3D3228",textMid:"#5C4A3A",muted:"#9A8878",
+  danger:"#C0392B",dangerLight:"#FDECEA",success:"#8BAF8A",successLight:"#EEF5EE",
+  warning:"#C07A00",warningLight:"#FFF8E1",fixo:"#6B8FAF",fixoLight:"#EAF2FA",
+  verde:"#8BAF8A",verdeLight:"#EEF5EE",
+  mostarda:"#E8A830",mostardaLight:"#FEF6E0",
 };
 
 const DIAS_SEMANA=["dom","seg","ter","qua","qui","sex","sab"];
@@ -842,7 +839,7 @@ export default function App(){
   return(
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif"}}>
       {/* Header mobile e desktop */}
-      <div style={{background:C.accent,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 8px #00000022"}}>
+      <div style={{background:"#3D3228",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 8px #00000033"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <img src="/logo-amarelo.jpg" alt="Casa Aquarela" style={{width:36,height:36,objectFit:"contain",borderRadius:8,background:"#fff"}}/>
           <span style={{fontWeight:800,color:"#fff",fontSize:15}}>{config.nomeClinica}</span>
