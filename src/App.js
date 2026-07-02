@@ -58,6 +58,9 @@ const gerarRecorrentes=(base,recorrencia)=>{
   return resultados;
 };
 
+
+const cleanObj=(obj)=>Object.fromEntries(Object.entries(obj).filter(([,v])=>v!==undefined));
+
 const Card=({children,style={}})=>(<div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20,...style}}>{children}</div>);
 const Badge=({label,bg,color})=>(<span style={{background:bg,color,border:`1px solid ${color}44`,borderRadius:6,padding:"2px 9px",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{label}</span>);
 const Btn=({children,onClick,variant="primary",small,style={},disabled,full})=>{
@@ -203,10 +206,12 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       id:isEdit?editando.id:uid(),
       date:mensal?today():data,sala,horaInicio,horaFim,
       modo:mensal?"mensal":modo,
-      periodo:modo==="periodo"&&!mensal?periodo:undefined,
-      mesMensal:mensal?mesMensal:undefined,
-      valor,userId:userProfile.uid,userName:userProfile.displayName||userProfile.email,
-      notes,pago:false,modalidade,recorrencia:mensal?"unica":recorrencia
+      periodo:modo==="periodo"&&!mensal?periodo:null,
+      mesMensal:mensal?mesMensal:null,
+      valor:valor||0,userId:userProfile.uid,userName:userProfile.displayName||userProfile.email||"",
+      notes:notes||"",pago:false,modalidade:modalidade||"presencial",
+      recorrencia:mensal?"unica":recorrencia||"unica",
+      serieId:null,serieInicio:null,serieFim:null
     };
     if(!mensal&&!isEdit){
       const nova={date:data,sala,horaInicio,horaFim};
@@ -347,11 +352,11 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const abrirEditar=(r)=>{setEditando(r);setSlotPre(null);setModalAberto(true);};
   const salvarReservas=async(geradas,isEdit)=>{
     if(isEdit){
-      await setDoc(doc(db,"reservas",editando.id),geradas[0]);
+      await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
     } else {
       for(const g of geradas){
-        await setDoc(doc(db,"reservas",g.id),g);
+        await setDoc(doc(db,"reservas",g.id),cleanObj(g));
       }
       setReservas(prev=>[...prev,...geradas]);
     }
@@ -518,7 +523,7 @@ function CobrancasView({reservas,setReservas,config}){
   const totalValor=lista.reduce((s,r)=>s+Number(r.valor||0),0);
   const totalPago=lista.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
   const nomes={};reservas.forEach(r=>{if(r.userId&&r.userName)nomes[r.userId]=r.userName;});
-  const togglePago=async(id)=>{const r=reservas.find(x=>x.id===id);if(!r)return;const u={...r,pago:!r.pago};await setDoc(doc(db,"reservas",id),u);setReservas(prev=>prev.map(x=>x.id===id?u:x));};
+  const togglePago=async(id)=>{const r=reservas.find(x=>x.id===id);if(!r)return;const u=cleanObj({...r,pago:!r.pago});await setDoc(doc(db,"reservas",id),u);setReservas(prev=>prev.map(x=>x.id===id?u:x));};
   const quitarTudo=async(userId)=>{const ids=lista.filter(r=>r.userId===userId&&!r.pago).map(r=>r.id);for(const id of ids){const r=reservas.find(x=>x.id===id);if(r){const u={...r,pago:true};await setDoc(doc(db,"reservas",id),u);}}setReservas(prev=>prev.map(r=>ids.includes(r.id)?{...r,pago:true}:r));};
   const porUser=Object.entries(nomes).map(([uid,name])=>{const rs=lista.filter(r=>r.userId===uid);if(!rs.length)return null;return{uid,name,reservas:rs,total:rs.reduce((s,r)=>s+Number(r.valor||0),0),pago:rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0)};}).filter(Boolean);
   return(
