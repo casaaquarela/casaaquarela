@@ -5,10 +5,15 @@ import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "firebase
 import { auth, db } from "./firebase";
 
 const C = {
-  bg:"#F4F6FA",white:"#FFFFFF",surface:"#FFFFFF",surfaceAlt:"#F0F2F7",border:"#E2E6EF",
-  accent:"#1B6CA8",accentLight:"#EBF3FB",text:"#1A1F2E",textMid:"#4B5563",muted:"#9CA3AF",
-  danger:"#DC2626",dangerLight:"#FEE2E2",success:"#059669",successLight:"#D1FAE5",
-  warning:"#D97706",warningLight:"#FEF3C7",fixo:"#6366F1",fixoLight:"#EEF2FF",
+  bg:"#F5F0E8",white:"#FFFDF7",surface:"#FFFDF7",surfaceAlt:"#EDE8DC",border:"#DDD5C0",
+  accent:"#B5590A",accentLight:"#FDEFD8",text:"#2C1A0E",textMid:"#5C4033",muted:"#A08C7A",
+  danger:"#C0392B",dangerLight:"#FDECEA",success:"#4A7C4E",successLight:"#E8F5E9",
+  warning:"#C07A00",warningLight:"#FFF8E1",fixo:"#6B4F9E",fixoLight:"#F0EBF8",
+  // Paleta Aquarela
+  mostarda:"#C8962A",mostardaLight:"#FDF3D0",
+  verde:"#4A7C4E",verdeLight:"#E8F5E9",
+  terracota:"#B5590A",terracotaLight:"#FDEFD8",
+  bege:"#E8DFC8",begeText:"#5C4033",
 };
 
 const DIAS_SEMANA=["dom","seg","ter","qua","qui","sex","sab"];
@@ -19,8 +24,8 @@ const MONTH_SHORT=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","
 const DEFAULT_CONFIG={
   valorHoraAvulsa:35,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
   salas:[
-    {id:"sala1",label:"Sala 1",cor:"#D97706",corLight:"#FEF3C7"},
-    {id:"sala2",label:"Sala 2",cor:"#059669",corLight:"#D1FAE5"},
+    {id:"sala1",label:"Sala 1",cor:"#B5590A",corLight:"#FDEFD8"},
+    {id:"sala2",label:"Sala 2",cor:"#4A7C4E",corLight:"#E8F5E9"},
   ],
   periodos:{
     manha:{label:"Manhã",inicio:"09:00",fim:"13:00",valor:100},
@@ -208,7 +213,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       modo:mensal?"mensal":modo,
       periodo:modo==="periodo"&&!mensal?periodo:null,
       mesMensal:mensal?mesMensal:null,
-      valor:valor||0,userId:userProfile.uid,userName:userProfile.displayName||userProfile.email||"",
+      valor:valor||0,userId:userProfile.uid,userName:userProfile.displayName||userProfile.nome||userProfile.email||"",userColor:userProfile.color||"#B5590A",
       notes:notes||"",pago:false,modalidade:modalidade||"presencial",
       recorrencia:mensal?"unica":recorrencia||"unica",
       serieId:null,serieInicio:null,serieFim:null
@@ -296,10 +301,12 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,config}){
                 const rs=getR(d,h,sala.id);const r=rs[0];
                 const isFirst=r&&horaParaMin(r.horaInicio)===h*60;
                 const nome=r?.userName||"—";
+                const corPro=r?.userColor||sala.cor;
+                const corProLight=r?.userColorLight||(corPro+"22");
                 return(
                   <td key={d+sala.id+h} onClick={!r?()=>onSlotClick(d,h,sala.id):undefined}
-                    style={{border:`1px solid ${C.border}`,padding:2,verticalAlign:"top",height:26,background:r?sala.corLight:"#FAFBFD",cursor:r?"default":"pointer"}}>
-                    {isFirst&&(<div style={{background:sala.cor,color:"#fff",borderRadius:3,padding:"2px 3px",fontSize:9,fontWeight:600,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
+                    style={{border:`1px solid ${C.border}`,padding:2,verticalAlign:"top",height:26,background:r?corProLight:C.surfaceAlt,cursor:r?"default":"pointer"}}>
+                    {isFirst&&(<div style={{background:corPro,color:"#fff",borderRadius:3,padding:"2px 3px",fontSize:9,fontWeight:600,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
                       {nome.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
                     </div>)}
                   </td>
@@ -565,7 +572,7 @@ function ProfissionaisView(){
   const[users,setUsers]=useState([]);
   const[loading,setLoading]=useState(true);
   const[modal,setModal]=useState(false);
-  const[form,setForm]=useState({nome:"",email:"",senha:"",role:"professional"});
+  const[form,setForm]=useState({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});
   const[erro,setErro]=useState("");
   const[saving,setSaving]=useState(false);
 
@@ -582,9 +589,10 @@ function ProfissionaisView(){
     try{
       const cred=await createUserWithEmailAndPassword(auth,form.email,form.senha);
       await setDoc(doc(db,"users",cred.user.uid),{
-        uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,criadoEm:new Date().toISOString()
+        uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,
+        color:form.color||"#B5590A",criadoEm:new Date().toISOString()
       });
-      setModal(false);setForm({nome:"",email:"",senha:"",role:"professional"});
+      setModal(false);setForm({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});
     }catch(e){
       if(e.code==="auth/email-already-in-use")setErro("Este e-mail já está cadastrado.");
       else if(e.code==="auth/weak-password")setErro("A senha precisa ter pelo menos 6 caracteres.");
@@ -604,7 +612,7 @@ function ProfissionaisView(){
       {loading?<p style={{color:C.muted}}>Carregando...</p>:(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {profissionais.map(u=>(<Card key={u.id} style={{display:"flex",alignItems:"center",gap:14}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:C.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:C.accent,fontSize:14,flexShrink:0}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:u.color||C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:14,flexShrink:0}}>
               {u.nome?.charAt(0)?.toUpperCase()||"?"}
             </div>
             <div style={{flex:1}}>
@@ -622,6 +630,13 @@ function ProfissionaisView(){
         <Field label="E-mail *" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} placeholder="nome@email.com"/>
         <Field label="Senha inicial *" type="password" value={form.senha} onChange={v=>setForm(f=>({...f,senha:v}))} placeholder="Mínimo 6 caracteres" helper="O profissional usará esta senha para entrar"/>
         <Field label="Tipo de acesso" value={form.role} onChange={v=>setForm(f=>({...f,role:v}))} options={[{value:"professional",label:"Profissional"},{value:"manager",label:"Gestor"}]}/>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Cor na agenda</label>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <input type="color" value={form.color||"#B5590A"} onChange={e=>setForm(f=>({...f,color:e.target.value}))} style={{width:44,height:36,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer"}}/>
+            <span style={{fontSize:13,color:C.textMid}}>Esta cor aparecerá nos blocos da agenda</span>
+          </div>
+        </div>
         {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:12}}>{erro}</div>}
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <Btn variant="secondary" onClick={()=>setModal(false)}>Cancelar</Btn>
@@ -752,19 +767,19 @@ export default function App(){
   return(
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif"}}>
       {/* Header mobile e desktop */}
-      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+      <div style={{background:C.accent,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 8px #00000022"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:28,height:28,background:C.accent,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🏥</div>
-          <span style={{fontWeight:800,color:C.text,fontSize:15}}>{config.nomeClinica}</span>
+          <div style={{width:28,height:28,background:"#ffffff33",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🏥</div>
+          <span style={{fontWeight:800,color:"#fff",fontSize:16}}>{config.nomeClinica}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:12,color:C.muted}}>{userProfile?.nome?.split(" ")[0]||userProfile?.email?.split("@")[0]}</span>
-          <button onClick={()=>signOut(auth)} style={{fontSize:12,color:C.danger,background:"none",border:`1px solid ${C.danger}33`,borderRadius:6,cursor:"pointer",fontFamily:"inherit",padding:"4px 10px",fontWeight:600}}>Sair</button>
+          <span style={{fontSize:12,color:"#ffffffcc"}}>{userProfile?.nome?.split(" ")[0]||userProfile?.email?.split("@")[0]}</span>
+          <button onClick={()=>signOut(auth)} style={{fontSize:12,color:"#fff",background:"#ffffff22",border:"1px solid #ffffff44",borderRadius:6,cursor:"pointer",fontFamily:"inherit",padding:"4px 10px",fontWeight:600}}>Sair</button>
         </div>
       </div>
 
       {/* Nav horizontal */}
-      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,overflowX:"auto",whiteSpace:"nowrap"}}>
+      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,overflowX:"auto",whiteSpace:"nowrap",boxShadow:"0 1px 4px #00000011"}}>
         <div style={{display:"inline-flex",padding:"0 8px"}}>
           {navItems.map(item=>{const active=view===item.id;return(
             <button key={item.id} onClick={()=>setView(item.id)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"12px 14px",background:"transparent",border:"none",borderBottom:`3px solid ${active?C.accent:"transparent"}`,cursor:"pointer",color:active?C.accent:C.textMid,fontFamily:"inherit",fontSize:13,fontWeight:active?700:500,whiteSpace:"nowrap"}}>
