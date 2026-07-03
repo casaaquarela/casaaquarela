@@ -66,6 +66,14 @@ const gerarRecorrentes=(base,recorrencia)=>{
 
 
 
+const podeEditar=(reserva)=>{
+  if(!reserva.date||!reserva.horaInicio) return false;
+  const agora=new Date();
+  const dataReserva=new Date(reserva.date+"T"+reserva.horaInicio+":00");
+  const diffHoras=(dataReserva-agora)/(1000*60*60);
+  return diffHoras>=24;
+};
+
 const calcMulta=(reserva)=>{
   if(!reserva.date||!reserva.horaInicio)return{multa:0,pct:0,msg:"Sem cobrança"};
   const agora=new Date();
@@ -357,7 +365,14 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Período</label>
           <div style={{display:"flex",gap:8}}>{Object.entries(periodos).map(([k,p])=>(<button key={k} onClick={()=>setPeriodo(k)} style={{flex:1,padding:"10px 8px",border:`2px solid ${periodo===k?C.accent:C.border}`,borderRadius:10,background:periodo===k?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:periodo===k?C.accent:C.text}}>{p.label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{p.inicio}–{p.fim}</div><div style={{fontSize:12,color:periodo===k?C.accent:C.textMid,fontWeight:600,marginTop:2}}>{fmtR(p.valor)}</div></button>))}</div>
         </div>)}
-        {!isEdit&&<Field label="Recorrência" value={recorrencia} onChange={setRecorrencia} options={[{value:"unica",label:"Não se repete"},{value:"semanal",label:"Toda semana (por 6 meses)"},{value:"quinzenal",label:"A cada 2 semanas (por 6 meses)"},{value:"mensal_rec",label:"Todo mês (por 6 meses)"}]}/>}
+        <Field label="Recorrência" value={recorrencia} onChange={setRecorrencia}
+          helper={isEdit?"Ao salvar, cria novas reservas recorrentes a partir desta data":undefined}
+          options={[
+            {value:"unica",label:"Não se repete"},
+            {value:"semanal",label:"Toda semana (por 6 meses)"},
+            {value:"quinzenal",label:"A cada 2 semanas (por 6 meses)"},
+            {value:"mensal_rec",label:"Todo mês (por 6 meses)"}
+          ]}/>
         <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
           {resumoValor}
           {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(addMonths(data,6))}</span>}
@@ -467,29 +482,56 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,isManager,sal
         <div style={{background:C.dangerLight,border:`1px solid ${C.danger}44`,borderRadius:10,padding:12,marginBottom:16,textAlign:"center",color:C.danger,fontWeight:600}}>
           ✕ Reserva cancelada
         </div>
-      ):(
-        <>
-          <div style={{background:pct===0?C.successLight:C.warningLight,border:`1px solid ${pct===0?C.success:C.warning}44`,borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13}}>
-            <span style={{fontWeight:600,color:pct===0?C.success:C.warning}}>
-              {pct===0?"✓ Sem multa agora":`⚠️ Cancelar agora = multa de ${pct}% (${fmtR(Number(reserva.valor||0)*pct/100)})`}
-            </span>
-            <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{msg}</div>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <Btn variant="danger" full onClick={onCancelar}>
-              ✕ Cancelar reserva{reserva.serieId?" (escolher escopo)":""}
-            </Btn>
-            <Btn variant="secondary" full onClick={onEditar}>
-              ✏️ Editar horário / sala
-            </Btn>
-            {isManager&&reserva.serieId&&(
-              <Btn variant="warning" full onClick={onExcluir}>
-                🗑️ Excluir (escolher escopo da série)
-              </Btn>
+      ):(()=>{
+        const editavel=isManager||podeEditar(reserva);
+        return(
+          <>
+            {/* Status de antecedência */}
+            <div style={{background:pct===0?C.successLight:C.dangerLight,border:`1px solid ${pct===0?C.success:C.danger}44`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:13}}>
+              <div style={{fontWeight:600,color:pct===0?C.success:C.danger}}>
+                {pct===0?"✓ Fora do prazo de multa":`⚠️ Dentro do prazo de multa (${pct}%)`}
+              </div>
+              <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{msg}</div>
+              {pct>0&&<div style={{color:C.danger,fontWeight:700,fontSize:14,marginTop:4}}>
+                Cancelar agora = {fmtR(Number(reserva.valor||0)*pct/100)}
+              </div>}
+            </div>
+
+            {/* Aviso de bloqueio de edição */}
+            {!editavel&&(
+              <div style={{background:C.warningLight,border:`1px solid ${C.warning}44`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:13,color:C.warning,fontWeight:600}}>
+                🔒 Edição bloqueada — reserva dentro do prazo de multa.<br/>
+                <span style={{fontWeight:400,color:C.textMid}}>Só é possível cancelar (com multa) ou aguardar.</span>
+              </div>
             )}
-          </div>
-        </>
-      )}
+
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {/* Cancelar - sempre disponível */}
+              <Btn variant="danger" full onClick={onCancelar}>
+                ✕ Cancelar reserva{reserva.serieId?" (escolher escopo)":""}
+              </Btn>
+
+              {/* Editar - só se fora do prazo ou gestor */}
+              {editavel?(
+                <Btn variant="secondary" full onClick={onEditar}>
+                  ✏️ Editar horário / sala / recorrência
+                </Btn>
+              ):(
+                <div style={{background:C.surfaceAlt,borderRadius:8,padding:"10px 14px",textAlign:"center",fontSize:13,color:C.muted}}>
+                  ✏️ Edição indisponível — aguarde passar o prazo de multa
+                </div>
+              )}
+
+              {/* Excluir série - só gestor */}
+              {isManager&&reserva.serieId&&(
+                <Btn variant="warning" full onClick={onExcluir}>
+                  🗑️ Excluir da série
+                </Btn>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       <div style={{marginTop:12}}>
         <Btn variant="ghost" full onClick={onClose}>Fechar</Btn>
@@ -586,16 +628,20 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   };
   const salvarReservas=async(geradas,isEdit)=>{
     if(isEdit){
-      // verifica se tem permissão
+      // verifica permissão
       if(!isManager&&editando.userId!==userProfile.uid){
         alert("Você não tem permissão para editar esta reserva.");return;
       }
-      // verifica conflito excluindo a própria reserva
+      // verifica se pode editar (prazo de 24h) - só para profissional
+      if(!isManager&&!podeEditar(editando)){
+        alert("Esta reserva está dentro do prazo de multa e não pode ser editada.");return;
+      }
+      // verifica conflito
       const nova={date:geradas[0].date,sala:geradas[0].sala,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim};
       if(conflito(reservas,nova,[editando.id])){
         alert("Já existe uma reserva nessa sala nesse horário.");return;
       }
-      // salva histórico de edição
+      // salva histórico
       await setDoc(doc(db,"historico",uid()),cleanObj({
         tipo:"edicao",reservaId:editando.id,
         userId:userProfile.uid,userName:userProfile.nome||userProfile.email,
@@ -603,8 +649,28 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         depois:{date:geradas[0].date,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim,sala:geradas[0].sala},
         editadoEm:new Date().toISOString()
       }));
+      // Atualiza a reserva atual
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
+      // Se tornou recorrente, cria as próximas
+      if(geradas[0].recorrencia&&geradas[0].recorrencia!=="unica"){
+        const serieId=uid();
+        const dataFim=addMonths(geradas[0].date,6);
+        let dataAtual=addDays(geradas[0].date,
+          geradas[0].recorrencia==="semanal"?7:
+          geradas[0].recorrencia==="quinzenal"?14:30
+        );
+        while(dataAtual<=dataFim){
+          const novaRes=cleanObj({...geradas[0],id:uid(),date:dataAtual,serieId,serieInicio:geradas[0].date,serieFim:dataFim,recorrencia:geradas[0].recorrencia});
+          if(!conflito(reservas,{date:dataAtual,sala:novaRes.sala,horaInicio:novaRes.horaInicio,horaFim:novaRes.horaFim},[])){
+            await setDoc(doc(db,"reservas",novaRes.id),novaRes);
+            setReservas(prev=>[...prev,novaRes]);
+          }
+          dataAtual=geradas[0].recorrencia==="semanal"?addDays(dataAtual,7):
+                    geradas[0].recorrencia==="quinzenal"?addDays(dataAtual,14):
+                    addMonths(dataAtual,1);
+        }
+      }
     } else {
       // verifica conflito para cada reserva gerada
       for(const g of geradas){
