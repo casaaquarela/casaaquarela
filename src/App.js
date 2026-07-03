@@ -730,6 +730,10 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
           userId:res.userId,userName:res.userName,
           tipo:"multa_cancelamento",valor:multaRes,pago:false,
           date:res.date,
+          horaInicio:res.horaInicio,
+          horaFim:res.horaFim,
+          sala:res.sala,
+          modoOriginal:res.modo,
           descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,
           criadoEm:new Date().toISOString()
         }));
@@ -1001,11 +1005,15 @@ function CobrancasView({reservas,setReservas,config}){
   lista.forEach(r=>{if(r.userId&&r.userName)todosIds[r.userId]=r.userName;});
   multasMes.forEach(l=>{if(l.userId&&l.userName)todosIds[l.userId]=l.userName;});
 
-  const totalReservas=lista.reduce((s,r)=>s+Number(r.valor||0),0);
-  const totalMultas=multasMes.reduce((s,l)=>s+Number(l.valor||0),0);
+  // Filtra pelos dados do profissional selecionado (ou todos)
+  const listaFiltrada=filtroPro?lista.filter(r=>r.userId===filtroPro):lista;
+  const multasFiltradas=filtroPro?multasMes.filter(l=>l.userId===filtroPro):multasMes;
+
+  const totalReservas=listaFiltrada.reduce((s,r)=>s+Number(r.valor||0),0);
+  const totalMultas=multasFiltradas.reduce((s,l)=>s+Number(l.valor||0),0);
   const totalGeral=totalReservas+totalMultas;
-  const pagoReservas=lista.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
-  const pagoMultas=multasMes.filter(l=>l.pago||l.valor===0).reduce((s,l)=>s+Number(l.valor||0),0);
+  const pagoReservas=listaFiltrada.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
+  const pagoMultas=multasFiltradas.filter(l=>l.pago||l.valor===0).reduce((s,l)=>s+Number(l.valor||0),0);
   const totalPago=pagoReservas+pagoMultas;
 
   const togglePago=async(id)=>{
@@ -1133,7 +1141,7 @@ function CobrancasView({reservas,setReservas,config}){
             <LinhaItem key={l.id}
               data={fmt(l.date)}
               sala={l.sala||null}
-              tipo="Cancelamento"
+              tipo={l.modoOriginal?modoLabel[l.modoOriginal]||"Cancelamento":"Cancelamento"}
               horario={l.horaInicio&&l.horaFim?`${l.horaInicio}–${l.horaFim}`:""}
               valor={l.valor||0}
               pago={l.pago}
