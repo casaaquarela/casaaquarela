@@ -448,7 +448,7 @@ function AlertasVencimento({reservas}){
 
 
 
-function ModalAcoes({reserva,onClose,onEditar,onCancelar,isManager,salas}){
+function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,isManager,salas}){
   const valor=Number(reserva.valor||0);
   const{pct,msg}=calcMulta(reserva);
   const cancelado=reserva.status==="cancelado";
@@ -469,22 +469,24 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,isManager,salas}){
         </div>
       ):(
         <>
-          {/* Aviso de multa */}
           <div style={{background:pct===0?C.successLight:C.warningLight,border:`1px solid ${pct===0?C.success:C.warning}44`,borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13}}>
             <span style={{fontWeight:600,color:pct===0?C.success:C.warning}}>
-              {pct===0?"✓ Cancelamento gratuito neste momento":`⚠️ Cancelar agora = multa de ${pct}% (${fmtR(Number(reserva.valor||0)*pct/100)})`}
+              {pct===0?"✓ Sem multa agora":`⚠️ Cancelar agora = multa de ${pct}% (${fmtR(Number(reserva.valor||0)*pct/100)})`}
             </span>
             <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{msg}</div>
           </div>
-
-          {/* Botões de ação */}
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <Btn variant="danger" full onClick={onCancelar}>
-              Cancelar esta reserva
+              ✕ Cancelar reserva{reserva.serieId?" (escolher escopo)":""}
             </Btn>
             <Btn variant="secondary" full onClick={onEditar}>
               ✏️ Editar horário / sala
             </Btn>
+            {isManager&&reserva.serieId&&(
+              <Btn variant="warning" full onClick={onExcluir}>
+                🗑️ Excluir (escolher escopo da série)
+              </Btn>
+            )}
           </div>
         </>
       )}
@@ -499,27 +501,47 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,isManager,salas}){
 function ModalCancelamento({reserva,onClose,onConfirm}){
   const{multa,pct,msg}=calcMulta(reserva);
   const valor=Number(reserva.valor||0);
+  const temSerie=!!reserva.serieId;
+  const[escopo,setEscopo]=useState("somente");
+
   return(
     <Modal title="Cancelar Reserva" onClose={onClose}>
-      <div style={{background:C.surfaceAlt,borderRadius:10,padding:16,marginBottom:16}}>
-        <div style={{fontSize:13,color:C.textMid,marginBottom:8}}>
-          <strong>Reserva:</strong> {fmt(reserva.date)} · {reserva.horaInicio}–{reserva.horaFim}
+      <div style={{background:C.surfaceAlt,borderRadius:10,padding:14,marginBottom:14}}>
+        <div style={{fontSize:13,color:C.textMid,marginBottom:4}}>
+          <strong>{fmt(reserva.date)}</strong> · {reserva.horaInicio}–{reserva.horaFim}
         </div>
-        <div style={{fontSize:13,color:C.textMid}}><strong>Valor:</strong> {fmtR(valor)}</div>
+        <div style={{fontSize:13,color:C.textMid}}>Valor: <strong>{fmtR(valor)}</strong></div>
       </div>
-      <div style={{background:pct===0?C.successLight:C.dangerLight,border:`1px solid ${pct===0?C.success:C.danger}44`,borderRadius:10,padding:14,marginBottom:16}}>
-        <div style={{fontWeight:700,color:pct===0?C.success:C.danger,marginBottom:4,fontSize:14}}>
-          {pct===0?"✓ Cancelamento gratuito":`⚠️ Multa de ${pct}%`}
+
+      {temSerie&&(
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>O que deseja cancelar?</label>
+          {[
+            ["somente","Somente este horário","Cancela apenas esta data específica"],
+            ["proximos","Este e todos os seguintes","Cancela esta data e todas as futuras da série"],
+          ].map(([v,l,sub])=>(
+            <label key={v} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 14px",border:`1px solid ${escopo===v?C.danger:C.border}`,borderRadius:8,marginBottom:8,cursor:"pointer",background:escopo===v?C.dangerLight:C.white}}>
+              <input type="radio" checked={escopo===v} onChange={()=>setEscopo(v)} style={{accentColor:C.danger,marginTop:2}}/>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:C.text}}>{l}</div>
+                <div style={{fontSize:12,color:C.muted}}>{sub}</div>
+              </div>
+            </label>
+          ))}
         </div>
-        <div style={{fontSize:13,color:C.textMid}}>{msg}</div>
-        {multa>0&&<div style={{fontSize:16,fontWeight:800,color:C.danger,marginTop:8}}>Valor da multa: {fmtR(multa)}</div>}
+      )}
+
+      <div style={{background:pct===0?C.successLight:C.dangerLight,border:`1px solid ${pct===0?C.success:C.danger}44`,borderRadius:10,padding:12,marginBottom:14}}>
+        <div style={{fontWeight:700,color:pct===0?C.success:C.danger,fontSize:14}}>
+          {pct===0?"✓ Sem multa":`⚠️ Multa de ${pct}% = ${fmtR(multa)}`}
+          {escopo==="proximos"&&multa>0&&<span style={{fontSize:12,fontWeight:400}}> (por reserva cancelada)</span>}
+        </div>
+        <div style={{fontSize:12,color:C.textMid,marginTop:2}}>{msg}</div>
       </div>
-      <p style={{fontSize:13,color:C.textMid,margin:"0 0 16px"}}>
-        {multa>0?"A multa será lançada automaticamente no seu financeiro.":"A reserva será cancelada sem cobrança."}
-      </p>
+
       <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
         <Btn variant="secondary" onClick={onClose}>Voltar</Btn>
-        <Btn variant="danger" onClick={()=>onConfirm(multa)}>Confirmar Cancelamento</Btn>
+        <Btn variant="danger" onClick={()=>onConfirm(multa,escopo)}>Confirmar Cancelamento</Btn>
       </div>
     </Modal>
   );
@@ -603,39 +625,40 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     setExcluindo(null);
   };
 
-  const confirmarCancelamento=async(multa)=>{
+  const confirmarCancelamento=async(multa,escopo="somente")=>{
     const r=cancelando;
-    // Salva no histórico
-    const historico={
-      tipo:"cancelamento",
-      reservaId:r.id,
-      userId:r.userId,
-      userName:r.userName,
-      gestorId:userProfile.uid,
-      gestorName:userProfile.nome||userProfile.email,
-      sala:r.sala,
-      date:r.date,
-      horaInicio:r.horaInicio,
-      horaFim:r.horaFim,
-      valor:r.valor||0,
-      multa:multa||0,
-      canceladoEm:new Date().toISOString(),
-      motivo:"Cancelado pelo profissional"
-    };
-    await setDoc(doc(db,"historico",uid()),cleanObj(historico));
-    // Remove da agenda (deleta do Firestore)
-    await deleteDoc(doc(db,"reservas",r.id));
-    setReservas(prev=>prev.filter(x=>x.id!==r.id));
-    // Se há multa, cria lançamento financeiro
-    if(multa>0){
-      const lancamento=cleanObj({
-        id:uid(),userId:r.userId,userName:r.userName,
-        tipo:"multa_cancelamento",valor:multa,pago:false,
-        date:r.date,descricao:`Multa de cancelamento - ${fmt(r.date)} ${r.horaInicio}–${r.horaFim}`,
-        criadoEm:new Date().toISOString()
-      });
-      await setDoc(doc(db,"lancamentos",lancamento.id),lancamento);
+    // Define quais reservas cancelar
+    let paraCancel=[r];
+    if(escopo==="proximos"&&r.serieId){
+      paraCancel=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date);
     }
+    // Cancela cada reserva
+    for(const res of paraCancel){
+      const multaRes=escopo==="proximos"?calcMulta(res).multa:multa;
+      // Salva histórico
+      await setDoc(doc(db,"historico",uid()),cleanObj({
+        tipo:"cancelamento",reservaId:res.id,
+        userId:res.userId,userName:res.userName,
+        sala:res.sala,date:res.date,
+        horaInicio:res.horaInicio,horaFim:res.horaFim,
+        valor:res.valor||0,multa:multaRes||0,
+        canceladoEm:new Date().toISOString(),
+        escopo:escopo
+      }));
+      // Remove da agenda
+      await deleteDoc(doc(db,"reservas",res.id));
+      // Lança multa se houver
+      if(multaRes>0){
+        await setDoc(doc(db,"lancamentos",uid()),cleanObj({
+          userId:res.userId,userName:res.userName,
+          tipo:"multa_cancelamento",valor:multaRes,pago:false,
+          date:res.date,
+          descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,
+          criadoEm:new Date().toISOString()
+        }));
+      }
+    }
+    setReservas(prev=>prev.filter(x=>!paraCancel.find(r=>r.id===x.id)));
     setCancelando(null);
   };
 
@@ -717,6 +740,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         onClose={()=>setAcoes(null)}
         onCancelar={()=>{setCancelando(acoes);setAcoes(null);}}
         onEditar={()=>{setEditando(acoes);setSlotPre(null);setModalAberto(true);setAcoes(null);}}
+        onExcluir={()=>{setExcluindo(acoes);setAcoes(null);}}
       />}
     </div>
   );
