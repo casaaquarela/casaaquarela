@@ -645,16 +645,27 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         alert("Já existe uma reserva nessa sala nesse horário.");return;
       }
       // salva histórico de edição
-      const hDocEdit={
-        tipo:"edicao",
-        reservaId:editando.id||"",
-        userId:userProfile.uid||"",
-        userName:userProfile.nome||userProfile.email||"",
-        antes:{date:editando.date||"",horaInicio:editando.horaInicio||"",horaFim:editando.horaFim||"",sala:editando.sala||""},
-        depois:{date:geradas[0].date||"",horaInicio:geradas[0].horaInicio||"",horaFim:geradas[0].horaFim||"",sala:geradas[0].sala||""},
-        editadoEm:new Date().toISOString()
-      };
-      await setDoc(doc(db,"historico",uid()),hDocEdit);
+      try{
+        const hDocEdit={
+          tipo:"edicao",
+          reservaId:String(editando.id||""),
+          userId:String(userProfile.uid||""),
+          userName:String(userProfile.nome||userProfile.email||""),
+          antesDate:String(editando.date||""),
+          antesInicio:String(editando.horaInicio||""),
+          antesFim:String(editando.horaFim||""),
+          antesSala:String(editando.sala||""),
+          depoisDate:String(geradas[0].date||""),
+          depoisInicio:String(geradas[0].horaInicio||""),
+          depoisFim:String(geradas[0].horaFim||""),
+          depoisSala:String(geradas[0].sala||""),
+          editadoEm:new Date().toISOString()
+        };
+        await setDoc(doc(db,"historico",uid()),hDocEdit);
+      }catch(errH){
+        console.error("Erro ao registrar histórico de edição:",errH);
+        alert("DEBUG histórico edição: "+errH.message);
+      }
       // Atualiza a reserva atual
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
@@ -691,21 +702,26 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         setReservas(prev=>[...prev,g]);
       }
       // Registra criação no histórico
-      const hId=uid();
-      const hDoc={
-        tipo:"criacao",
-        userId:userProfile.uid||"",
-        userName:userProfile.nome||userProfile.email||"",
-        date:geradas[0].date||"",
-        horaInicio:geradas[0].horaInicio||"",
-        horaFim:geradas[0].horaFim||"",
-        sala:geradas[0].sala||"",
-        modo:geradas[0].modo||"avulsa",
-        recorrencia:geradas[0].recorrencia||"unica",
-        totalGeradas:geradas.length||1,
-        criadoEm:new Date().toISOString()
-      };
-      await setDoc(doc(db,"historico",hId),hDoc);
+      try{
+        const hId=uid();
+        const hDoc={
+          tipo:"criacao",
+          userId:String(userProfile.uid||""),
+          userName:String(userProfile.nome||userProfile.email||""),
+          date:String(geradas[0].date||""),
+          horaInicio:String(geradas[0].horaInicio||""),
+          horaFim:String(geradas[0].horaFim||""),
+          sala:String(geradas[0].sala||""),
+          modo:String(geradas[0].modo||"avulsa"),
+          recorrencia:String(geradas[0].recorrencia||"unica"),
+          totalGeradas:Number(geradas.length||1),
+          criadoEm:new Date().toISOString()
+        };
+        await setDoc(doc(db,"historico",hId),hDoc);
+      }catch(errH){
+        console.error("Erro ao registrar histórico de criação:",errH);
+        alert("DEBUG histórico criação: "+errH.message);
+      }
     }
   };
   const confirmarExcluir=async(opcao)=>{
@@ -1468,10 +1484,10 @@ function HistoricoView(){
 
                 {h.tipo==="edicao"&&(
                   <div style={{fontSize:13,color:C.textMid}}>
-                    <span>{fmt(h.antes?.date)} {h.antes?.horaInicio}–{h.antes?.horaFim}</span>
+                    <span>{fmt(h.antesDate||h.antes?.date)} {(h.antesInicio||h.antes?.horaInicio)}–{(h.antesFim||h.antes?.horaFim)}</span>
                     <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
-                    <span>{fmt(h.depois?.date)} {h.depois?.horaInicio}–{h.depois?.horaFim}</span>
-                    {h.depois?.sala&&<span> · <strong>{getSalaLabel(h.depois.sala)}</strong></span>}
+                    <span>{fmt(h.depoisDate||h.depois?.date)} {(h.depoisInicio||h.depois?.horaInicio)}–{(h.depoisFim||h.depois?.horaFim)}</span>
+                    {(h.depoisSala||h.depois?.sala)&&<span> · <strong>{getSalaLabel(h.depoisSala||h.depois?.sala)}</strong></span>}
                   </div>
                 )}
                 {h.tipo==="criacao"&&(
