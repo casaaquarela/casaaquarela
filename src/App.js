@@ -368,10 +368,9 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
         <Field label="Recorrência" value={recorrencia} onChange={setRecorrencia}
           helper={isEdit?"Ao salvar, cria novas reservas recorrentes a partir desta data":undefined}
           options={[
-            {value:"unica",label:"Não se repete"},
-            {value:"semanal",label:"Toda semana (por 6 meses)"},
-            {value:"quinzenal",label:"A cada 2 semanas (por 6 meses)"},
-            {value:"mensal_rec",label:"Todo mês (por 6 meses)"}
+            {value:"unica",label:"Avulsa (não se repete)"},
+            {value:"semanal",label:"Semanalmente"},
+            {value:"quinzenal",label:"Quinzenalmente"},
           ]}/>
         <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
           {resumoValor}
@@ -1332,7 +1331,11 @@ function HistoricoView(){
   useEffect(()=>{
     const u1=onSnapshot(collection(db,"historico"),snap=>{
       const items=snap.docs.map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>b.canceladoEm?.localeCompare(a.canceladoEm||"")||b.editadoEm?.localeCompare(a.editadoEm||"")||0);
+        .sort((a,b)=>{
+          const dataA=a.canceladoEm||a.editadoEm||"";
+          const dataB=b.canceladoEm||b.editadoEm||"";
+          return dataB.localeCompare(dataA); // mais recente primeiro
+        });
       setHistorico(items);
     });
     const u2=onSnapshot(collection(db,"lancamentos"),snap=>{
@@ -1440,25 +1443,41 @@ function HistoricoView(){
             <div style={{flex:1}}>
               {h.tipo==="cancelamento"&&(
                 <>
-                  <div style={{fontSize:14,fontWeight:600,color:C.text}}>
-                    Cancelamento — {h.userName}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:4}}>
+                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>
+                      Cancelamento — {h.userName}
+                    </div>
+                    {h.canceladoEm&&(
+                      <div style={{fontSize:11,color:C.muted,fontWeight:500}}>
+                        🕐 {new Date(h.canceladoEm).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}
+                      </div>
+                    )}
                   </div>
-                  <div style={{fontSize:12,color:C.textMid}}>
-                    {fmt(h.date)} · {h.horaInicio}–{h.horaFim} · {h.sala}
+                  <div style={{fontSize:13,color:C.textMid,marginTop:3}}>
+                    Reserva de <strong>{fmt(h.date)}</strong> · {h.horaInicio}–{h.horaFim}
+                    {h.sala&&<span> · {h.sala==="sala1"?"Sala 1":h.sala==="sala2"?"Sala 2":h.sala}</span>}
                   </div>
-                  {h.multa>0&&<div style={{fontSize:12,color:C.danger,fontWeight:600}}>Multa: {fmtR(h.multa)}</div>}
-                  <div style={{fontSize:11,color:C.muted}}>{h.canceladoEm?new Date(h.canceladoEm).toLocaleString("pt-BR"):""}</div>
+                  {h.multa>0&&<div style={{fontSize:12,color:C.danger,fontWeight:600,marginTop:2}}>Multa aplicada: {fmtR(h.multa)}</div>}
+                  {h.escopo&&h.escopo!=="somente"&&<div style={{fontSize:11,color:C.muted,marginTop:2}}>Escopo: {h.escopo==="proximos"?"Este e os seguintes":"Todos da série"}</div>}
                 </>
               )}
               {h.tipo==="edicao"&&(
                 <>
-                  <div style={{fontSize:14,fontWeight:600,color:C.text}}>
-                    Edição — {h.userName}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:4}}>
+                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>
+                      Edição — {h.userName}
+                    </div>
+                    {h.editadoEm&&(
+                      <div style={{fontSize:11,color:C.muted,fontWeight:500}}>
+                        🕐 {new Date(h.editadoEm).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}
+                      </div>
+                    )}
                   </div>
-                  <div style={{fontSize:12,color:C.textMid}}>
-                    {fmt(h.antes?.date)} {h.antes?.horaInicio}–{h.antes?.horaFim} → {fmt(h.depois?.date)} {h.depois?.horaInicio}–{h.depois?.horaFim}
+                  <div style={{fontSize:13,color:C.textMid,marginTop:3}}>
+                    <span>{fmt(h.antes?.date)} {h.antes?.horaInicio}–{h.antes?.horaFim}</span>
+                    <span style={{color:C.accent,margin:"0 6px"}}>→</span>
+                    <span>{fmt(h.depois?.date)} {h.depois?.horaInicio}–{h.depois?.horaFim}</span>
                   </div>
-                  <div style={{fontSize:11,color:C.muted}}>{h.editadoEm?new Date(h.editadoEm).toLocaleString("pt-BR"):""}</div>
                 </>
               )}
             </div>
