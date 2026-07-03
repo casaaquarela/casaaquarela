@@ -687,6 +687,20 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         await setDoc(doc(db,"reservas",g.id),cleanObj(g));
         setReservas(prev=>[...prev,g]);
       }
+      // Registra criação no histórico (só a primeira da série)
+      await setDoc(doc(db,"historico",uid()),cleanObj({
+        tipo:"criacao",
+        userId:userProfile.uid,
+        userName:userProfile.nome||userProfile.email,
+        date:geradas[0].date,
+        horaInicio:geradas[0].horaInicio,
+        horaFim:geradas[0].horaFim,
+        sala:geradas[0].sala,
+        modo:geradas[0].modo,
+        recorrencia:geradas[0].recorrencia||"unica",
+        totalGeradas:geradas.length,
+        criadoEm:new Date().toISOString()
+      }));
     }
   };
   const confirmarExcluir=async(opcao)=>{
@@ -1325,168 +1339,155 @@ function ConfigView({config,setConfig}){
 
 function HistoricoView(){
   const[historico,setHistorico]=useState([]);
-  const[lancamentos,setLancamentos]=useState([]);
+  const[users,setUsers]=useState([]);
+  const[reservas,setReservas]=useState([]);
   const[loading,setLoading]=useState(true);
+  const[filtroPro,setFiltroPro]=useState("");
 
   useEffect(()=>{
     const u1=onSnapshot(collection(db,"historico"),snap=>{
-      const items=snap.docs.map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>{
-          const dataA=a.canceladoEm||a.editadoEm||"";
-          const dataB=b.canceladoEm||b.editadoEm||"";
-          return dataB.localeCompare(dataA); // mais recente primeiro
-        });
-      setHistorico(items);
+      setHistorico(snap.docs.map(d=>({id:d.id,...d.data()})));
     });
-    const u2=onSnapshot(collection(db,"lancamentos"),snap=>{
-      setLancamentos(snap.docs.map(d=>({id:d.id,...d.data()})));
+    const u2=onSnapshot(collection(db,"users"),snap=>{
+      setUsers(snap.docs.map(d=>({id:d.id,...d.data()})));
+    });
+    const u3=onSnapshot(collection(db,"reservas"),snap=>{
+      setReservas(snap.docs.map(d=>({id:d.id,...d.data()})));
       setLoading(false);
     });
-    return()=>{u1();u2();};
+    return()=>{u1();u2();u3();};
   },[]);
 
-  const totalMultas=lancamentos.reduce((s,l)=>s+Number(l.valor||0),0);
-  const multasPagas=lancamentos.filter(l=>l.pago).reduce((s,l)=>s+Number(l.valor||0),0);
+  const profissionais=users.filter(u=>u.role==="professional");
+  const opcoesProf=[{value:"",label:"Todos os profissionais"},...profissionais.map(p=>({value:p.uid,label:p.nome||p.email}))];
 
-  const[editandoMulta,setEditandoMulta]=useState(null);
-  const[novoValorMulta,setNovoValorMulta]=useState("");
-  const[justificativa,setJustificativa]=useState("");
-
-  const togglePagoMulta=async(id)=>{
-    const l=lancamentos.find(x=>x.id===id);if(!l)return;
-    const u={...l,pago:!l.pago};
-    await setDoc(doc(db,"lancamentos",id),u);
-    setLancamentos(prev=>prev.map(x=>x.id===id?u:x));
+  const fmtDtHr=(iso)=>{
+    if(!iso) return "";
+    return new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
   };
 
-  const salvarEdicaoMulta=async()=>{
-    const l=editandoMulta;
-    const u={...l,valor:Number(novoValorMulta)||0,justificativa:justificativa,editadoPor:"gestor",editadoEm:new Date().toISOString()};
-    await setDoc(doc(db,"lancamentos",l.id),u);
-    setLancamentos(prev=>prev.map(x=>x.id===l.id?u:x));
-    setEditandoMulta(null);setNovoValorMulta("");setJustificativa("");
+  const getSalaLabel=(salaId,config_)=>{
+    if(!salaId) return "";
+    if(salaId==="sala1") return "Sala 1";
+    if(salaId==="sala2") return "Sala 2";
+    return salaId;
   };
 
-  const zerarMulta=async(id)=>{
-    const l=lancamentos.find(x=>x.id===id);if(!l)return;
-    const u={...l,valor:0,pago:true,justificativa:"Multa dispensada pelo gestor",editadoEm:new Date().toISOString()};
-    await setDoc(doc(db,"lancamentos",id),u);
-    setLancamentos(prev=>prev.map(x=>x.id===id?u:x));
-  };
+  // Agrupa por profissional
+  const porPro=profissionais
+    .filter(p=>!filtroPro||p.uid===filtroPro)
+    .map(p=>{
+      // Histórico do profissional
+      const hPro=historico.filter(h=>h.userId===p.uid)
+        .sort((a,b)=>{
+          const dA=a.canceladoEm||a.editadoEm||"";
+          const dB=b.canceladoEm||b.editadoEm||"";
+          return dB.localeCompare(dA);
+        });
+      // Reservas ativas do profissional
+      const resPro=reservas.filter(r=>r.userId===p.uid);
+      return{...p,historico:hPro,totalReservas:resPro.length,reservasAtivas:resPro.filter(r=>!r.status||r.status!=="cancelado").length};
+    })
+    .filter(p=>p.historico.length>0||p.totalReservas>0);
 
   if(loading)return<div style={{color:C.muted,padding:20}}>Carregando...</div>;
 
+  const TipoIcon=({tipo})=>{
+    if(tipo==="cancelamento")return<span style={{background:C.dangerLight,color:C.danger,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>Cancelamento</span>;
+    if(tipo==="edicao")return<span style={{background:C.accentLight,color:C.accent,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>Edição</span>;
+    if(tipo==="criacao")return<span style={{background:C.successLight,color:C.success,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>Nova reserva</span>;
+    return<span style={{background:C.surfaceAlt,color:C.muted,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>{tipo}</span>;
+  };
+
   return(
     <div>
-      <h2 style={{margin:"0 0 24px",color:C.text,fontSize:22,fontWeight:800}}>Histórico & Multas</h2>
+      <h2 style={{margin:"0 0 8px",color:C.text,fontSize:22,fontWeight:800}}>Histórico</h2>
+      <p style={{color:C.muted,fontSize:13,margin:"0 0 20px"}}>Registro administrativo de todas as ações dos profissionais no sistema.</p>
 
-      {lancamentos.length>0&&(
-        <Card style={{marginBottom:20}}>
-          <h3 style={{margin:"0 0 16px",color:C.text,fontSize:15,fontWeight:700}}>💰 Multas por cancelamento</h3>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
-            <Stat label="Total multas" value={fmtR(totalMultas)} color={C.danger}/>
-            <Stat label="Recebido" value={fmtR(multasPagas)} color={C.success}/>
-            <Stat label="Pendente" value={fmtR(totalMultas-multasPagas)} color={C.warning}/>
+      {/* Filtro */}
+      <div style={{maxWidth:320,marginBottom:20}}>
+        <Field label="Profissional" value={filtroPro} onChange={setFiltroPro} options={opcoesProf}/>
+      </div>
+
+      {porPro.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhuma atividade registrada.</p></Card>}
+
+      {porPro.map(pro=>(
+        <Card key={pro.uid} style={{marginBottom:16}}>
+          {/* Cabeçalho do profissional */}
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,paddingBottom:12,borderBottom:`2px solid ${C.border}`}}>
+            <div style={{width:40,height:40,borderRadius:"50%",background:pro.color||C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:16,flexShrink:0}}>
+              {pro.nome?.charAt(0)?.toUpperCase()||"?"}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{pro.nome||pro.email}</div>
+              <div style={{fontSize:12,color:C.muted}}>{pro.email}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:12,color:C.muted}}>Cadastro</div>
+              <div style={{fontSize:12,color:C.textMid,fontWeight:600}}>{pro.criadoEm?fmtDtHr(pro.criadoEm):"—"}</div>
+            </div>
           </div>
-          {lancamentos.map(l=>(
-            <div key={l.id} style={{background:C.surfaceAlt,borderRadius:10,padding:12,marginBottom:8}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:l.justificativa?6:0}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:14,fontWeight:600,color:C.text}}>{l.userName}</div>
-                  <div style={{fontSize:12,color:C.textMid}}>{l.descricao}</div>
-                  {l.justificativa&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>📝 {l.justificativa}</div>}
+
+          {/* Resumo */}
+          <div style={{display:"flex",gap:16,marginBottom:14,flexWrap:"wrap"}}>
+            <div style={{fontSize:13,color:C.textMid}}>📅 <strong>{pro.reservasAtivas}</strong> reservas ativas</div>
+            <div style={{fontSize:13,color:C.textMid}}>📋 <strong>{pro.historico.length}</strong> {pro.historico.length===1?"ação registrada":"ações registradas"}</div>
+          </div>
+
+          {/* Log de ações */}
+          {pro.historico.length===0&&(
+            <p style={{color:C.muted,fontSize:13,margin:0}}>Nenhuma alteração registrada ainda.</p>
+          )}
+          {pro.historico.map(h=>(
+            <div key={h.id} style={{display:"flex",gap:12,padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:h.tipo==="cancelamento"?C.danger:C.accent,flexShrink:0,marginTop:5}}/>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap",marginBottom:3}}>
+                  <TipoIcon tipo={h.tipo}/>
+                  <span style={{fontSize:11,color:C.muted}}>
+                    🕐 {fmtDtHr(h.canceladoEm||h.editadoEm)}
+                  </span>
                 </div>
-                <span style={{fontSize:15,fontWeight:800,color:l.valor===0?C.muted:C.danger}}>{l.valor===0?"Dispensada":fmtR(l.valor)}</span>
-              </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={()=>togglePagoMulta(l.id)} style={{background:l.pago?C.successLight:C.warningLight,color:l.pago?C.success:C.warning,border:`1px solid ${l.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                  {l.pago?"✓ Pago":"Pendente"}
-                </button>
-                <button onClick={()=>{setEditandoMulta(l);setNovoValorMulta(String(l.valor||0));setJustificativa(l.justificativa||"");}} style={{background:C.accentLight,color:C.accent,border:`1px solid ${C.accent}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                  ✏️ Editar valor
-                </button>
-                {l.valor>0&&<button onClick={()=>zerarMulta(l.id)} style={{background:C.successLight,color:C.success,border:`1px solid ${C.success}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                  Dispensar multa
-                </button>}
+
+                {h.tipo==="cancelamento"&&(
+                  <div style={{fontSize:13,color:C.textMid}}>
+                    Reserva de <strong>{fmt(h.date)}</strong> · {h.horaInicio}–{h.horaFim}
+                    {h.sala&&<span> · <strong>{getSalaLabel(h.sala)}</strong></span>}
+                    {h.escopo&&h.escopo!=="somente"&&(
+                      <span style={{color:C.warning,marginLeft:6,fontSize:12}}>
+                        ({h.escopo==="proximos"?"este e seguintes":"todos da série"})
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {h.tipo==="edicao"&&(
+                  <div style={{fontSize:13,color:C.textMid}}>
+                    <span>{fmt(h.antes?.date)} {h.antes?.horaInicio}–{h.antes?.horaFim}</span>
+                    <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
+                    <span>{fmt(h.depois?.date)} {h.depois?.horaInicio}–{h.depois?.horaFim}</span>
+                    {h.depois?.sala&&<span> · <strong>{getSalaLabel(h.depois.sala)}</strong></span>}
+                  </div>
+                )}
+                {h.tipo==="criacao"&&(
+                  <div style={{fontSize:13,color:C.textMid}}>
+                    {fmt(h.date)} · {h.horaInicio}–{h.horaFim} · <strong>{getSalaLabel(h.sala)}</strong>
+                    {h.recorrencia&&h.recorrencia!=="unica"&&(
+                      <span style={{color:C.fixo,marginLeft:6,fontSize:12}}>
+                        ↻ {h.recorrencia==="semanal"?"Semanal":"Quinzenal"} · {h.totalGeradas} reservas geradas
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
-          {editandoMulta&&(
-            <div style={{position:"fixed",inset:0,background:"#00000060",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-              <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,width:"100%",maxWidth:400}}>
-                <h3 style={{margin:"0 0 16px",color:C.text}}>Editar Multa</h3>
-                <p style={{color:C.textMid,fontSize:13,margin:"0 0 14px"}}>Profissional: <strong>{editandoMulta.userName}</strong></p>
-                <div style={{marginBottom:14}}>
-                  <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Novo valor (R$)</label>
-                  <input type="number" value={novoValorMulta} onChange={e=>setNovoValorMulta(e.target.value)} style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                </div>
-                <div style={{marginBottom:16}}>
-                  <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Justificativa</label>
-                  <input type="text" value={justificativa} onChange={e=>setJustificativa(e.target.value)} placeholder="Ex: Benefício concedido pelo gestor" style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                </div>
-                <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-                  <Btn variant="secondary" onClick={()=>setEditandoMulta(null)}>Cancelar</Btn>
-                  <Btn onClick={salvarEdicaoMulta}>Salvar</Btn>
-                </div>
-              </div>
-            </div>
-          )}
         </Card>
-      )}
-
-      <Card>
-        <h3 style={{margin:"0 0 16px",color:C.text,fontSize:15,fontWeight:700}}>📋 Log de atividades</h3>
-        {historico.length===0&&<p style={{color:C.muted,margin:0}}>Nenhuma atividade registrada.</p>}
-        {historico.map(h=>(
-          <div key={h.id} style={{display:"flex",gap:14,padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:h.tipo==="cancelamento"?C.danger:C.accent,flexShrink:0,marginTop:5}}/>
-            <div style={{flex:1}}>
-              {h.tipo==="cancelamento"&&(
-                <>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:4}}>
-                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>
-                      Cancelamento — {h.userName}
-                    </div>
-                    {h.canceladoEm&&(
-                      <div style={{fontSize:11,color:C.muted,fontWeight:500}}>
-                        🕐 {new Date(h.canceladoEm).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{fontSize:13,color:C.textMid,marginTop:3}}>
-                    Reserva de <strong>{fmt(h.date)}</strong> · {h.horaInicio}–{h.horaFim}
-                    {h.sala&&<span> · {h.sala==="sala1"?"Sala 1":h.sala==="sala2"?"Sala 2":h.sala}</span>}
-                  </div>
-                  {h.multa>0&&<div style={{fontSize:12,color:C.danger,fontWeight:600,marginTop:2}}>Multa aplicada: {fmtR(h.multa)}</div>}
-                  {h.escopo&&h.escopo!=="somente"&&<div style={{fontSize:11,color:C.muted,marginTop:2}}>Escopo: {h.escopo==="proximos"?"Este e os seguintes":"Todos da série"}</div>}
-                </>
-              )}
-              {h.tipo==="edicao"&&(
-                <>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:4}}>
-                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>
-                      Edição — {h.userName}
-                    </div>
-                    {h.editadoEm&&(
-                      <div style={{fontSize:11,color:C.muted,fontWeight:500}}>
-                        🕐 {new Date(h.editadoEm).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{fontSize:13,color:C.textMid,marginTop:3}}>
-                    <span>{fmt(h.antes?.date)} {h.antes?.horaInicio}–{h.antes?.horaFim}</span>
-                    <span style={{color:C.accent,margin:"0 6px"}}>→</span>
-                    <span>{fmt(h.depois?.date)} {h.depois?.horaInicio}–{h.depois?.horaFim}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </Card>
+      ))}
     </div>
   );
 }
+
 
 export default function App(){
   const[authUser,setAuthUser]=useState(undefined);
