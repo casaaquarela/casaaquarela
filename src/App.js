@@ -465,19 +465,32 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     setEditando(null);setModalAberto(true);
   };
   const abrirEditar=(r)=>{
+    if(!r) return;
     const isOwn=r.userId===userProfile.uid;
     if(isManager||isOwn){
-      setAcoes(r); // abre modal de ações para gestor ou dono
+      setAcoes(r);
     }
-    // se não é dono e não é gestor: não faz nada
+    // se não é dono e não é gestor: não abre nada
   };
   const salvarReservas=async(geradas,isEdit)=>{
     if(isEdit){
+      // verifica se tem permissão
+      if(!isManager&&editando.userId!==userProfile.uid){
+        alert("Você não tem permissão para editar esta reserva.");return;
+      }
       // verifica conflito excluindo a própria reserva
       const nova={date:geradas[0].date,sala:geradas[0].sala,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim};
       if(conflito(reservas,nova,[editando.id])){
         alert("Já existe uma reserva nessa sala nesse horário.");return;
       }
+      // salva histórico de edição
+      await setDoc(doc(db,"historico",uid()),cleanObj({
+        tipo:"edicao",reservaId:editando.id,
+        userId:userProfile.uid,userName:userProfile.nome||userProfile.email,
+        antes:{date:editando.date,horaInicio:editando.horaInicio,horaFim:editando.horaFim,sala:editando.sala},
+        depois:{date:geradas[0].date,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim,sala:geradas[0].sala},
+        editadoEm:new Date().toISOString()
+      }));
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
     } else {
@@ -509,9 +522,37 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 
   const confirmarCancelamento=async(multa)=>{
     const r=cancelando;
-    const updated=cleanObj({...r,status:"cancelado",multa:multa||0,canceladoEm:new Date().toISOString()});
-    await setDoc(doc(db,"reservas",r.id),updated);
-    setReservas(prev=>prev.map(x=>x.id===r.id?updated:x));
+    // Salva no histórico
+    const historico={
+      tipo:"cancelamento",
+      reservaId:r.id,
+      userId:r.userId,
+      userName:r.userName,
+      gestorId:userProfile.uid,
+      gestorName:userProfile.nome||userProfile.email,
+      sala:r.sala,
+      date:r.date,
+      horaInicio:r.horaInicio,
+      horaFim:r.horaFim,
+      valor:r.valor||0,
+      multa:multa||0,
+      canceladoEm:new Date().toISOString(),
+      motivo:"Cancelado pelo profissional"
+    };
+    await setDoc(doc(db,"historico",uid()),cleanObj(historico));
+    // Remove da agenda (deleta do Firestore)
+    await deleteDoc(doc(db,"reservas",r.id));
+    setReservas(prev=>prev.filter(x=>x.id!==r.id));
+    // Se há multa, cria lançamento financeiro
+    if(multa>0){
+      const lancamento=cleanObj({
+        id:uid(),userId:r.userId,userName:r.userName,
+        tipo:"multa_cancelamento",valor:multa,pago:false,
+        date:r.date,descricao:`Multa de cancelamento - ${fmt(r.date)} ${r.horaInicio}–${r.horaFim}`,
+        criadoEm:new Date().toISOString()
+      });
+      await setDoc(doc(db,"lancamentos",lancamento.id),lancamento);
+    }
     setCancelando(null);
   };
 
@@ -870,6 +911,102 @@ function ConfigView({config,setConfig}){
   );
 }
 
+
+function HistoricoView(){
+  const[historico,setHistorico]=useState([]);
+  const[lancamentos,setLancamentos]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const u1=onSnapshot(collection(db,"historico"),snap=>{
+      const items=snap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>b.canceladoEm?.localeCompare(a.canceladoEm||"")||b.editadoEm?.localeCompare(a.editadoEm||"")||0);
+      setHistorico(items);
+    });
+    const u2=onSnapshot(collection(db,"lancamentos"),snap=>{
+      setLancamentos(snap.docs.map(d=>({id:d.id,...d.data()})));
+      setLoading(false);
+    });
+    return()=>{u1();u2();};
+  },[]);
+
+  const totalMultas=lancamentos.reduce((s,l)=>s+Number(l.valor||0),0);
+  const multasPagas=lancamentos.filter(l=>l.pago).reduce((s,l)=>s+Number(l.valor||0),0);
+
+  const togglePagoMulta=async(id)=>{
+    const l=lancamentos.find(x=>x.id===id);if(!l)return;
+    const u={...l,pago:!l.pago};
+    await setDoc(doc(db,"lancamentos",id),u);
+    setLancamentos(prev=>prev.map(x=>x.id===id?u:x));
+  };
+
+  if(loading)return<div style={{color:C.muted,padding:20}}>Carregando...</div>;
+
+  return(
+    <div>
+      <h2 style={{margin:"0 0 24px",color:C.text,fontSize:22,fontWeight:800}}>Histórico & Multas</h2>
+
+      {lancamentos.length>0&&(
+        <Card style={{marginBottom:20}}>
+          <h3 style={{margin:"0 0 16px",color:C.text,fontSize:15,fontWeight:700}}>💰 Multas por cancelamento</h3>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
+            <Stat label="Total multas" value={fmtR(totalMultas)} color={C.danger}/>
+            <Stat label="Recebido" value={fmtR(multasPagas)} color={C.success}/>
+            <Stat label="Pendente" value={fmtR(totalMultas-multasPagas)} color={C.warning}/>
+          </div>
+          {lancamentos.map(l=>(
+            <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:600,color:C.text}}>{l.userName}</div>
+                <div style={{fontSize:12,color:C.textMid}}>{l.descricao}</div>
+              </div>
+              <span style={{fontSize:14,fontWeight:700,color:C.danger}}>{fmtR(l.valor)}</span>
+              <button onClick={()=>togglePagoMulta(l.id)} style={{background:l.pago?C.successLight:C.warningLight,color:l.pago?C.success:C.warning,border:`1px solid ${l.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                {l.pago?"✓ Pago":"Pendente"}
+              </button>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      <Card>
+        <h3 style={{margin:"0 0 16px",color:C.text,fontSize:15,fontWeight:700}}>📋 Log de atividades</h3>
+        {historico.length===0&&<p style={{color:C.muted,margin:0}}>Nenhuma atividade registrada.</p>}
+        {historico.map(h=>(
+          <div key={h.id} style={{display:"flex",gap:14,padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:h.tipo==="cancelamento"?C.danger:C.accent,flexShrink:0,marginTop:5}}/>
+            <div style={{flex:1}}>
+              {h.tipo==="cancelamento"&&(
+                <>
+                  <div style={{fontSize:14,fontWeight:600,color:C.text}}>
+                    Cancelamento — {h.userName}
+                  </div>
+                  <div style={{fontSize:12,color:C.textMid}}>
+                    {fmt(h.date)} · {h.horaInicio}–{h.horaFim} · {h.sala}
+                  </div>
+                  {h.multa>0&&<div style={{fontSize:12,color:C.danger,fontWeight:600}}>Multa: {fmtR(h.multa)}</div>}
+                  <div style={{fontSize:11,color:C.muted}}>{h.canceladoEm?new Date(h.canceladoEm).toLocaleString("pt-BR"):""}</div>
+                </>
+              )}
+              {h.tipo==="edicao"&&(
+                <>
+                  <div style={{fontSize:14,fontWeight:600,color:C.text}}>
+                    Edição — {h.userName}
+                  </div>
+                  <div style={{fontSize:12,color:C.textMid}}>
+                    {fmt(h.antes?.date)} {h.antes?.horaInicio}–{h.antes?.horaFim} → {fmt(h.depois?.date)} {h.depois?.horaInicio}–{h.depois?.horaFim}
+                  </div>
+                  <div style={{fontSize:11,color:C.muted}}>{h.editadoEm?new Date(h.editadoEm).toLocaleString("pt-BR"):""}</div>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
 export default function App(){
   const[authUser,setAuthUser]=useState(undefined);
   const[userProfile,setUserProfile]=useState(null);
@@ -916,7 +1053,7 @@ export default function App(){
   if(!authUser||!userProfile)return<LoginScreen onLogin={()=>{}}/>;
   if(loadingData)return<div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontFamily:"system-ui"}}>Carregando dados...</div>;
 
-  const navManager=[{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"agenda",icon:"📅",label:"Agenda"},{id:"cobrancas",icon:"💰",label:"Cobranças"},{id:"profissionais",icon:"👥",label:"Profissionais"},{id:"configuracoes",icon:"⚙️",label:"Config"}];
+  const navManager=[{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"agenda",icon:"📅",label:"Agenda"},{id:"cobrancas",icon:"💰",label:"Cobranças"},{id:"historico",icon:"📋",label:"Histórico"},{id:"profissionais",icon:"👥",label:"Profissionais"},{id:"configuracoes",icon:"⚙️",label:"Config"}];
   const navPro=[{id:"agenda",icon:"📅",label:"Reservar"},{id:"pendencias",icon:"💰",label:"Pendências"}];
   const navItems=isManager?navManager:navPro;
   const isMobile=window.innerWidth<768;
@@ -952,6 +1089,7 @@ export default function App(){
         {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} userProfile={userProfile} config={config} isManager={isManager}/>}
         {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} config={config}/>}
         {view==="pendencias"&&!isManager&&<PendenciasView reservas={reservas} userProfile={userProfile} config={config}/>}
+        {view==="historico"&&isManager&&<HistoricoView/>}
         {view==="profissionais"&&isManager&&<ProfissionaisView/>}
         {view==="configuracoes"&&isManager&&<ConfigView config={config} setConfig={setConfig}/>}
       </div>
