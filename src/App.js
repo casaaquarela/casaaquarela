@@ -326,8 +326,11 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,onBlockClick,config
                 return(
                   <td key={d+sala.id+h}
                     onClick={r ? ()=>onBlockClick&&onBlockClick(r) : ()=>onSlotClick(d,h,sala.id)}
+                    title={r ? (r.userName + " · " + r.horaInicio + "–" + r.horaFim) : "Clique para reservar"}
                     style={{border:`1px solid ${corPro}44`,padding:0,verticalAlign:"top",height:26,
-                      background:r?corPro:C.surfaceAlt,cursor:"pointer"}}>
+                      background:r?corPro:C.surfaceAlt,
+                      cursor:r?"pointer":"cell",
+                      opacity:r?.status==="cancelado"?0.4:1}}>
                     {isFirst&&(
                       <div style={{background:"rgba(0,0,0,0.18)",color:"#fff",padding:"2px 4px",fontSize:9,fontWeight:700,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
                         {nome.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
@@ -360,6 +363,55 @@ function AlertasVencimento({reservas}){
   );
 }
 
+
+
+function ModalAcoes({reserva,onClose,onEditar,onCancelar,isManager,salas}){
+  const valor=Number(reserva.valor||0);
+  const{pct,msg}=calcMulta(reserva);
+  const cancelado=reserva.status==="cancelado";
+  return(
+    <Modal title="Reserva" onClose={onClose}>
+      {/* Detalhes da reserva */}
+      <div style={{background:C.surfaceAlt,borderRadius:10,padding:14,marginBottom:16}}>
+        <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{reserva.userName}</div>
+        <div style={{fontSize:13,color:C.textMid,marginBottom:3}}>📅 {fmt(reserva.date)} · {reserva.horaInicio}–{reserva.horaFim}</div>
+        <div style={{fontSize:13,color:C.textMid,marginBottom:3}}>🏢 {salas?.find(s=>s.id===reserva.sala)?.label||reserva.sala}</div>
+        <div style={{fontSize:13,color:C.textMid,marginBottom:3}}>{reserva.modalidade==="online"?"💻 Online":"🏢 Presencial"}</div>
+        <div style={{fontSize:14,fontWeight:700,color:C.text,marginTop:8}}>{valor?fmtR(valor):"A combinar"}</div>
+      </div>
+
+      {cancelado?(
+        <div style={{background:C.dangerLight,border:`1px solid ${C.danger}44`,borderRadius:10,padding:12,marginBottom:16,textAlign:"center",color:C.danger,fontWeight:600}}>
+          ✕ Reserva cancelada
+        </div>
+      ):(
+        <>
+          {/* Aviso de multa */}
+          <div style={{background:pct===0?C.successLight:C.warningLight,border:`1px solid ${pct===0?C.success:C.warning}44`,borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13}}>
+            <span style={{fontWeight:600,color:pct===0?C.success:C.warning}}>
+              {pct===0?"✓ Cancelamento gratuito neste momento":`⚠️ Cancelar agora = multa de ${pct}% (${fmtR(Number(reserva.valor||0)*pct/100)})`}
+            </span>
+            <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{msg}</div>
+          </div>
+
+          {/* Botões de ação */}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <Btn variant="danger" full onClick={onCancelar}>
+              Cancelar esta reserva
+            </Btn>
+            <Btn variant="secondary" full onClick={onEditar}>
+              ✏️ Editar horário / sala
+            </Btn>
+          </div>
+        </>
+      )}
+
+      <div style={{marginTop:12}}>
+        <Btn variant="ghost" full onClick={onClose}>Fechar</Btn>
+      </div>
+    </Modal>
+  );
+}
 
 function ModalCancelamento({reserva,onClose,onConfirm}){
   const{multa,pct,msg}=calcMulta(reserva);
@@ -396,6 +448,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[editando,setEditando]=useState(null);
   const[excluindo,setExcluindo]=useState(null);
   const[cancelando,setCancelando]=useState(null);
+  const[acoes,setAcoes]=useState(null);
   const[slotPre,setSlotPre]=useState(null);
   const[viewMode,setViewMode]=useState("semana");
   const[filtroDt,setFiltroDt]=useState("");
@@ -411,16 +464,35 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     setSlotPre({date:date||today(),horaInicio:hh,horaFim:hf,sala:salaId||salas[0]?.id});
     setEditando(null);setModalAberto(true);
   };
-  const abrirEditar=(r)=>{setEditando(r);setSlotPre(null);setModalAberto(true);};
+  const abrirEditar=(r)=>{
+    const isOwn=r.userId===userProfile.uid;
+    if(isManager||isOwn){
+      setAcoes(r); // abre modal de ações para gestor ou dono
+    }
+    // se não é dono e não é gestor: não faz nada
+  };
   const salvarReservas=async(geradas,isEdit)=>{
     if(isEdit){
+      // verifica conflito excluindo a própria reserva
+      const nova={date:geradas[0].date,sala:geradas[0].sala,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim};
+      if(conflito(reservas,nova,[editando.id])){
+        alert("Já existe uma reserva nessa sala nesse horário.");return;
+      }
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
     } else {
+      // verifica conflito para cada reserva gerada
       for(const g of geradas){
+        if(g.modo!=="mensal"){
+          const nova={date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim};
+          if(conflito(reservas,nova,[])){
+            alert(`Conflito detectado em ${fmt(g.date)} ${g.horaInicio}–${g.horaFim} na ${g.sala}. Reserva não criada para este horário.`);
+            continue;
+          }
+        }
         await setDoc(doc(db,"reservas",g.id),cleanObj(g));
+        setReservas(prev=>[...prev,g]);
       }
-      setReservas(prev=>[...prev,...geradas]);
     }
   };
   const confirmarExcluir=async(opcao)=>{
@@ -505,8 +577,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
                   }
                   <span style={{fontSize:14,fontWeight:700,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</span>
                   {isManager&&!cancelado&&<Btn variant="success" small onClick={()=>togglePago(r.id)}>{r.pago?"✓ Pago":"Marcar Pago"}</Btn>}
-                  {(isManager||isOwn)&&!cancelado&&<Btn variant="secondary" small onClick={()=>abrirEditar(r)}>Editar</Btn>}
-                  {!cancelado&&isOwn&&<Btn variant="warning" small onClick={()=>setCancelando(r)}>Cancelar</Btn>}
+                  {(isManager||isOwn)&&!cancelado&&<Btn variant="secondary" small onClick={()=>setAcoes(r)}>Ver opções</Btn>}
                   {isManager&&<Btn variant="danger" small onClick={()=>setExcluindo(r)}>✕</Btn>}
                 </div>
               </div>
@@ -518,6 +589,11 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
       {modalAberto&&!editando&&<ModalReserva onClose={()=>{setModalAberto(false);setSlotPre(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={null} inicial={slotPre}/>}
       {excluindo&&<ModalExcluir reserva={excluindo} onClose={()=>setExcluindo(null)} onConfirm={confirmarExcluir}/>}
       {cancelando&&<ModalCancelamento reserva={cancelando} onClose={()=>setCancelando(null)} onConfirm={confirmarCancelamento}/>}
+      {acoes&&<ModalAcoes reserva={acoes} salas={salas} isManager={isManager}
+        onClose={()=>setAcoes(null)}
+        onCancelar={()=>{setCancelando(acoes);setAcoes(null);}}
+        onEditar={()=>{setEditando(acoes);setSlotPre(null);setModalAberto(true);setAcoes(null);}}
+      />}
     </div>
   );
 }
