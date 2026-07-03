@@ -292,7 +292,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   );
 }
 
-function GradeSemanal({reservas,users,semanaBase,onSlotClick,config}){
+function GradeSemanal({reservas,users,semanaBase,onSlotClick,onBlockClick,config}){
   const salas=config.salas||[];
   const hStart=horaParaMin(config.horaInicio||"08:00");
   const hEnd=horaParaMin(config.horaFim||"21:00");
