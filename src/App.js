@@ -558,7 +558,14 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[viewMode,setViewMode]=useState("semana");
   const[filtroDt,setFiltroDt]=useState("");
   const salas=config.salas||[];
-  const semanaBase=(()=>{const d=new Date();d.setDate(d.getDate()-d.getDay()+1+semOff*7);return d.toISOString().slice(0,10);})();
+  const[dataSelecionada,setDataSelecionada]=useState(today());
+  const semanaBase=(()=>{
+    const base=new Date(dataSelecionada+"T12:00:00");
+    base.setDate(base.getDate()-base.getDay()+1);
+    const d=new Date(base);
+    d.setDate(d.getDate()+semOff*7);
+    return d.toISOString().slice(0,10);
+  })();
 
   const minhasReservas=isManager?reservas:reservas.filter(r=>r.userId===userProfile.uid);
   const lista=minhasReservas.filter(r=>!filtroDt||r.date===filtroDt).sort((a,b)=>(a.date+a.horaInicio).localeCompare(b.date+b.horaInicio));
@@ -685,10 +692,20 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
       <AlertasVencimento reservas={isManager?reservas:reservas.filter(r=>r.userId===userProfile.uid)}/>
       {viewMode==="semana"&&(
         <Card style={{marginBottom:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
             <Btn variant="secondary" small onClick={()=>setSemOff(o=>o-1)}>← Anterior</Btn>
-            <span style={{fontWeight:700,color:C.text,fontSize:14}}>Semana de {fmt(semanaBase)}</span>
-            <div style={{display:"flex",gap:8}}><Btn variant="secondary" small onClick={()=>setSemOff(0)}>Hoje</Btn><Btn variant="secondary" small onClick={()=>setSemOff(o=>o+1)}>Próxima →</Btn></div>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontWeight:700,color:C.text,fontSize:14}}>Semana de {fmt(semanaBase)}</span>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <label style={{fontSize:12,color:C.muted,fontWeight:500}}>Ir para:</label>
+                <input type="date" value={dataSelecionada} onChange={e=>{setDataSelecionada(e.target.value);setSemOff(0);}}
+                  style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"4px 8px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn variant="secondary" small onClick={()=>{setSemOff(0);setDataSelecionada(today());}}>Hoje</Btn>
+              <Btn variant="secondary" small onClick={()=>setSemOff(o=>o+1)}>Próxima →</Btn>
+            </div>
           </div>
           <GradeSemanal reservas={reservas} semanaBase={semanaBase} onSlotClick={abrirNovo} onBlockClick={abrirEditar} config={config}/>
           <div style={{display:"flex",gap:12,marginTop:12,flexWrap:"wrap"}}>
@@ -746,17 +763,23 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   );
 }
 
-function PendenciasView({reservas,userProfile,config}){
+function PendenciasView({userProfile,config}){
   const salas=config.salas||[];
   const[lancamentos,setLancamentos]=useState([]);
+  const[minhas,setMinhas]=useState([]);
+
   useEffect(()=>{
-    const unsub=onSnapshot(collection(db,"lancamentos"),snap=>{
+    // Busca reservas em tempo real do Firebase
+    const unsubR=onSnapshot(collection(db,"reservas"),snap=>{
+      const todas=snap.docs.map(d=>({id:d.id,...d.data()}));
+      setMinhas(todas.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date)));
+    });
+    // Busca lançamentos (multas) em tempo real
+    const unsubL=onSnapshot(collection(db,"lancamentos"),snap=>{
       setLancamentos(snap.docs.map(d=>({id:d.id,...d.data()})).filter(l=>l.userId===userProfile.uid));
     });
-    return unsub;
+    return()=>{unsubR();unsubL();};
   },[userProfile.uid]);
-
-  const minhas=reservas.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date));
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
 
   const totalReservas=minhas.reduce((s,r)=>s+Number(r.valor||0),0);
@@ -1305,7 +1328,7 @@ export default function App(){
         {view==="dashboard"&&isManager&&<DashboardView reservas={reservas} config={config}/>}
         {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} userProfile={userProfile} config={config} isManager={isManager}/>}
         {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} config={config}/>}
-        {view==="pendencias"&&!isManager&&<PendenciasView reservas={reservas} userProfile={userProfile} config={config}/>}
+        {view==="pendencias"&&!isManager&&<PendenciasView userProfile={userProfile} config={config}/>}
         {view==="historico"&&isManager&&<HistoricoView/>}
         {view==="profissionais"&&isManager&&<ProfissionaisView/>}
         {view==="configuracoes"&&isManager&&<ConfigView config={config} setConfig={setConfig}/>}
