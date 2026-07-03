@@ -471,7 +471,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
             <span style={{fontWeight:700,color:C.text,fontSize:14}}>Semana de {fmt(semanaBase)}</span>
             <div style={{display:"flex",gap:8}}><Btn variant="secondary" small onClick={()=>setSemOff(0)}>Hoje</Btn><Btn variant="secondary" small onClick={()=>setSemOff(o=>o+1)}>Próxima →</Btn></div>
           </div>
-          <GradeSemanal reservas={reservas} semanaBase={semanaBase} onSlotClick={abrirNovo} config={config}/>
+          <GradeSemanal reservas={reservas} semanaBase={semanaBase} onSlotClick={abrirNovo} onBlockClick={abrirEditar} config={config}/>
           <div style={{display:"flex",gap:12,marginTop:12,flexWrap:"wrap"}}>
             {salas.map(s=>(<div key={s.id} style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:s.cor}}/><span style={{fontSize:12,color:C.textMid}}>{s.label}</span></div>))}
             <div style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:C.surfaceAlt,border:`1px solid ${C.border}`}}/><span style={{fontSize:12,color:C.muted}}>Clique para reservar</span></div>
