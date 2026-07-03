@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -129,12 +129,16 @@ const Stat=({label,value,color=C.accent,sub})=>(
 const SalaTag=({salaId,salas})=>{const s=salas?.find(x=>x.id===salaId);if(!s)return null;return<Badge label={s.label} bg={s.corLight} color={s.cor}/>;};
 
 function LoginScreen({onLogin}){
+  const[tela,setTela]=useState("login"); // login | cadastro
   const[email,setEmail]=useState("");
   const[senha,setSenha]=useState("");
+  const[nome,setNome]=useState("");
+  const[confirma,setConfirma]=useState("");
   const[erro,setErro]=useState("");
   const[show,setShow]=useState(false);
   const[loading,setLoading]=useState(false);
-  const tentar=async()=>{
+
+  const entrar=async()=>{
     setErro("");setLoading(true);
     try{
       await signInWithEmailAndPassword(auth,email,senha);
@@ -143,26 +147,105 @@ function LoginScreen({onLogin}){
     }
     setLoading(false);
   };
+
+  const cadastrar=async()=>{
+    setErro("");
+    if(!nome.trim())return setErro("Informe seu nome completo.");
+    if(!email.trim())return setErro("Informe seu e-mail.");
+    if(senha.length<6)return setErro("A senha precisa ter pelo menos 6 caracteres.");
+    if(senha!==confirma)return setErro("As senhas não coincidem.");
+    setLoading(true);
+    try{
+      const cred=await createUserWithEmailAndPassword(auth,email,senha);
+      await setDoc(doc(db,"users",cred.user.uid),{
+        uid:cred.user.uid,
+        email:email,
+        nome:nome.trim(),
+        role:"professional",
+        color:"#8BAF8A",
+        criadoEm:new Date().toISOString()
+      });
+    }catch(e){
+      if(e.code==="auth/email-already-in-use")setErro("Este e-mail já está cadastrado.");
+      else if(e.code==="auth/weak-password")setErro("A senha precisa ter pelo menos 6 caracteres.");
+      else if(e.code==="auth/invalid-email")setErro("E-mail inválido.");
+      else setErro("Erro ao cadastrar. Tente novamente.");
+    }
+    setLoading(false);
+  };
+
+  const trocarTela=(t)=>{setTela(t);setErro("");setEmail("");setSenha("");setNome("");setConfirma("");};
+
   return(
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,-apple-system,sans-serif",padding:20}}>
       <div style={{width:"100%",maxWidth:380}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <img src={LOGO_VERDE} alt="Casa Aquarela" style={{width:160,height:160,objectFit:"contain",margin:"0 auto 8px",display:"block"}}/>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <img src={LOGO_VERDE} alt="Casa Aquarela" style={{width:140,height:140,objectFit:"contain",margin:"0 auto 8px",display:"block"}}/>
           <p style={{color:C.muted,margin:0,fontSize:13}}>Agenda & Salas</p>
         </div>
+
+        {/* Abas login/cadastro */}
+        <div style={{display:"flex",background:C.surfaceAlt,borderRadius:10,padding:4,marginBottom:20}}>
+          <button onClick={()=>trocarTela("login")} style={{flex:1,padding:"9px",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:14,background:tela==="login"?C.white:"transparent",color:tela==="login"?C.text:C.muted,boxShadow:tela==="login"?"0 1px 4px #00000015":"none",transition:"all 0.15s"}}>
+            Entrar
+          </button>
+          <button onClick={()=>trocarTela("cadastro")} style={{flex:1,padding:"9px",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:14,background:tela==="cadastro"?C.white:"transparent",color:tela==="cadastro"?C.text:C.muted,boxShadow:tela==="cadastro"?"0 1px 4px #00000015":"none",transition:"all 0.15s"}}>
+            Criar conta
+          </button>
+        </div>
+
         <Card>
-          <Field label="E-mail" type="email" value={email} onChange={setEmail} placeholder="seu@email.com"/>
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Senha</label>
-            <div style={{position:"relative"}}>
-              <input type={show?"text":"password"} value={senha} onChange={e=>setSenha(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tentar()} placeholder="••••••••" style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 40px 8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
-              <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:14}}>{show?"🙈":"👁️"}</button>
-            </div>
-          </div>
-          {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:14}}>{erro}</div>}
-          <Btn full onClick={tentar} disabled={loading} style={{padding:"11px 18px",fontSize:15}}>{loading?"Entrando...":"Entrar"}</Btn>
+          {tela==="login"?(
+            <>
+              <Field label="E-mail" type="email" value={email} onChange={setEmail} placeholder="seu@email.com"/>
+              <div style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Senha</label>
+                <div style={{position:"relative"}}>
+                  <input type={show?"text":"password"} value={senha} onChange={e=>setSenha(e.target.value)} onKeyDown={e=>e.key==="Enter"&&entrar()} placeholder="••••••••" style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 40px 8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:14}}>{show?"🙈":"👁️"}</button>
+                </div>
+              </div>
+              {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:14}}>{erro}</div>}
+              <Btn full onClick={entrar} disabled={loading} style={{padding:"11px 18px",fontSize:15}}>{loading?"Entrando...":"Entrar"}</Btn>
+              <div style={{textAlign:"center",marginTop:12}}>
+                <button onClick={async()=>{
+                  if(!email){setErro("Digite seu e-mail acima primeiro.");return;}
+                  try{
+                    await sendPasswordResetEmail(auth,email);
+                    setErro("");
+                    alert("E-mail de redefinição enviado! Verifique sua caixa de entrada.");
+                  }catch(e){
+                    setErro("E-mail não encontrado.");
+                  }
+                }} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontFamily:"inherit",fontSize:12,textDecoration:"underline",padding:0}}>
+                  Esqueci minha senha
+                </button>
+              </div>
+            </>
+          ):(
+            <>
+              <Field label="Nome completo *" value={nome} onChange={setNome} placeholder="Nome Sobrenome"/>
+              <Field label="E-mail *" type="email" value={email} onChange={setEmail} placeholder="seu@email.com"/>
+              <div style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Senha *</label>
+                <div style={{position:"relative"}}>
+                  <input type={show?"text":"password"} value={senha} onChange={e=>setSenha(e.target.value)} placeholder="Mínimo 6 caracteres" style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 40px 8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:14}}>{show?"🙈":"👁️"}</button>
+                </div>
+              </div>
+              <Field label="Confirmar senha *" type="password" value={confirma} onChange={setConfirma} placeholder="Repita a senha"/>
+              {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:14}}>{erro}</div>}
+              <Btn full onClick={cadastrar} disabled={loading} style={{padding:"11px 18px",fontSize:15}}>{loading?"Cadastrando...":"Criar minha conta"}</Btn>
+              <p style={{textAlign:"center",color:C.muted,fontSize:12,margin:"12px 0 0"}}>Ao criar uma conta você concorda com as regras de uso da Casa Aquarela.</p>
+            </>
+          )}
         </Card>
-        <p style={{textAlign:"center",color:C.muted,fontSize:12,marginTop:16}}>Acesse com o e-mail e senha fornecidos pela gestão.</p>
+        <p style={{textAlign:"center",color:C.muted,fontSize:12,marginTop:16}}>
+          {tela==="login"?"Não tem conta? ":"Já tem conta? "}
+          <button onClick={()=>trocarTela(tela==="login"?"cadastro":"login")} style={{background:"none",border:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:600,padding:0}}>
+            {tela==="login"?"Criar conta":"Fazer login"}
+          </button>
+        </p>
       </div>
     </div>
   );
