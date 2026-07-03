@@ -333,7 +333,7 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,onBlockClick,config
                       opacity:r?.status==="cancelado"?0.4:1}}>
                     {isFirst&&(
                       <div style={{background:"rgba(0,0,0,0.18)",color:"#fff",padding:"2px 4px",fontSize:9,fontWeight:700,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
-                        {nome.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
+                        {nome.split(" ").slice(0,2).join(" ")}{r.recorrencia&&r.recorrencia!=="unica"?" ↻":""}{r.modalidade==="online"?" 💻":""}
                       </div>
                     )}
                   </td>
@@ -770,6 +770,7 @@ function ProfissionaisView(){
   const[users,setUsers]=useState([]);
   const[loading,setLoading]=useState(true);
   const[modal,setModal]=useState(false);
+  const[editando,setEditando]=useState(null);
   const[form,setForm]=useState({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});
   const[erro,setErro]=useState("");
   const[saving,setSaving]=useState(false);
@@ -782,19 +783,24 @@ function ProfissionaisView(){
     return unsub;
   },[]);
 
-  const cadastrar=async()=>{
+  const abrirNovo=()=>{setEditando(null);setForm({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});setErro("");setModal(true);};
+  const abrirEditar=(u)=>{setEditando(u);setForm({nome:u.nome||"",email:u.email||"",senha:"",role:u.role||"professional",color:u.color||"#B5590A"});setErro("");setModal(true);};
+
+  const salvar=async()=>{
     setErro("");setSaving(true);
     try{
-      const cred=await createUserWithEmailAndPassword(auth,form.email,form.senha);
-      await setDoc(doc(db,"users",cred.user.uid),{
-        uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,
-        color:form.color||"#B5590A",criadoEm:new Date().toISOString()
-      });
-      setModal(false);setForm({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});
+      if(editando){
+        await setDoc(doc(db,"users",editando.uid),cleanObj({...editando,nome:form.nome,role:form.role,color:form.color}));
+        setModal(false);
+      } else {
+        const cred=await createUserWithEmailAndPassword(auth,form.email,form.senha);
+        await setDoc(doc(db,"users",cred.user.uid),{uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,color:form.color||"#B5590A",criadoEm:new Date().toISOString()});
+        setModal(false);setForm({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});
+      }
     }catch(e){
       if(e.code==="auth/email-already-in-use")setErro("Este e-mail já está cadastrado.");
       else if(e.code==="auth/weak-password")setErro("A senha precisa ter pelo menos 6 caracteres.");
-      else setErro("Erro ao cadastrar. Tente novamente.");
+      else setErro("Erro ao salvar. Tente novamente.");
     }
     setSaving(false);
   };
@@ -805,45 +811,57 @@ function ProfissionaisView(){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h2 style={{margin:0,color:C.text,fontSize:22,fontWeight:800}}>Profissionais</h2>
-        <Btn onClick={()=>{setModal(true);setErro("");}}>+ Cadastrar</Btn>
+        <Btn onClick={abrirNovo}>+ Cadastrar</Btn>
       </div>
       {loading?<p style={{color:C.muted}}>Carregando...</p>:(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {profissionais.map(u=>(<Card key={u.id} style={{display:"flex",alignItems:"center",gap:14}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:u.color||C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:14,flexShrink:0}}>
+            <div style={{width:40,height:40,borderRadius:"50%",background:u.color||C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:16,flexShrink:0}}>
               {u.nome?.charAt(0)?.toUpperCase()||"?"}
             </div>
             <div style={{flex:1}}>
               <div style={{fontSize:15,fontWeight:700,color:C.text}}>{u.nome}</div>
               <div style={{fontSize:12,color:C.muted}}>{u.email}</div>
+              <span style={{background:u.role==="manager"?C.warningLight:C.accentLight,color:u.role==="manager"?C.warning:C.accent,padding:"1px 6px",borderRadius:4,fontSize:11,fontWeight:600}}>
+                {u.role==="manager"?"Gestor":"Profissional"}
+              </span>
             </div>
-            <Badge label="Profissional" bg={C.accentLight} color={C.accent}/>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:20,height:20,borderRadius:"50%",background:u.color||C.accent,border:`2px solid ${C.border}`}}/>
+              <Btn variant="secondary" small onClick={()=>abrirEditar(u)}>✏️ Editar</Btn>
+            </div>
           </Card>))}
           {profissionais.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhum profissional cadastrado ainda.</p></Card>}
         </div>
       )}
-      {modal&&(<Modal title="Cadastrar Profissional" onClose={()=>setModal(false)}>
-        <p style={{color:C.textMid,fontSize:14,margin:"0 0 16px"}}>O profissional receberá acesso com este e-mail e senha.</p>
-        <Field label="Nome completo *" value={form.nome} onChange={v=>setForm(f=>({...f,nome:v}))} placeholder="Nome Sobrenome"/>
-        <Field label="E-mail *" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} placeholder="nome@email.com"/>
-        <Field label="Senha inicial *" type="password" value={form.senha} onChange={v=>setForm(f=>({...f,senha:v}))} placeholder="Mínimo 6 caracteres" helper="O profissional usará esta senha para entrar"/>
-        <Field label="Tipo de acesso" value={form.role} onChange={v=>setForm(f=>({...f,role:v}))} options={[{value:"professional",label:"Profissional"},{value:"manager",label:"Gestor"}]}/>
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Cor na agenda</label>
-          <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            <input type="color" value={form.color||"#B5590A"} onChange={e=>setForm(f=>({...f,color:e.target.value}))} style={{width:44,height:36,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer"}}/>
-            <span style={{fontSize:13,color:C.textMid}}>Esta cor aparecerá nos blocos da agenda</span>
+      {modal&&(
+        <Modal title={editando?"Editar Profissional":"Novo Profissional"} onClose={()=>setModal(false)}>
+          {editando&&<div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"8px 12px",fontSize:13,color:C.textMid,marginBottom:14}}>
+            Editando: <strong>{editando.nome}</strong> — e-mail não pode ser alterado aqui.
+          </div>}
+          <Field label="Nome completo *" value={form.nome} onChange={v=>setForm(f=>({...f,nome:v}))} placeholder="Nome Sobrenome"/>
+          {!editando&&<Field label="E-mail *" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} placeholder="nome@email.com"/>}
+          {!editando&&<Field label="Senha inicial *" type="password" value={form.senha} onChange={v=>setForm(f=>({...f,senha:v}))} placeholder="Mínimo 6 caracteres" helper="O profissional usará esta senha para entrar"/>}
+          <Field label="Tipo de acesso" value={form.role} onChange={v=>setForm(f=>({...f,role:v}))} options={[{value:"professional",label:"Profissional"},{value:"manager",label:"Gestor"}]}/>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Cor na agenda</label>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <input type="color" value={form.color||"#B5590A"} onChange={e=>setForm(f=>({...f,color:e.target.value}))} style={{width:44,height:36,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer"}}/>
+              <div style={{width:32,height:32,borderRadius:"50%",background:form.color||"#B5590A"}}/>
+              <span style={{fontSize:13,color:C.textMid}}>Cor nos blocos da agenda</span>
+            </div>
           </div>
-        </div>
-        {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:12}}>{erro}</div>}
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-          <Btn variant="secondary" onClick={()=>setModal(false)}>Cancelar</Btn>
-          <Btn onClick={cadastrar} disabled={saving}>{saving?"Cadastrando...":"Cadastrar"}</Btn>
-        </div>
-      </Modal>)}
+          {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:12}}>{erro}</div>}
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn variant="secondary" onClick={()=>setModal(false)}>Cancelar</Btn>
+            <Btn onClick={salvar} disabled={saving}>{saving?"Salvando...":(editando?"Salvar":"Cadastrar")}</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
+
 
 function ConfigView({config,setConfig}){
   const[form,setForm]=useState(JSON.parse(JSON.stringify(config)));
@@ -933,9 +951,28 @@ function HistoricoView(){
   const totalMultas=lancamentos.reduce((s,l)=>s+Number(l.valor||0),0);
   const multasPagas=lancamentos.filter(l=>l.pago).reduce((s,l)=>s+Number(l.valor||0),0);
 
+  const[editandoMulta,setEditandoMulta]=useState(null);
+  const[novoValorMulta,setNovoValorMulta]=useState("");
+  const[justificativa,setJustificativa]=useState("");
+
   const togglePagoMulta=async(id)=>{
     const l=lancamentos.find(x=>x.id===id);if(!l)return;
     const u={...l,pago:!l.pago};
+    await setDoc(doc(db,"lancamentos",id),u);
+    setLancamentos(prev=>prev.map(x=>x.id===id?u:x));
+  };
+
+  const salvarEdicaoMulta=async()=>{
+    const l=editandoMulta;
+    const u={...l,valor:Number(novoValorMulta)||0,justificativa:justificativa,editadoPor:"gestor",editadoEm:new Date().toISOString()};
+    await setDoc(doc(db,"lancamentos",l.id),u);
+    setLancamentos(prev=>prev.map(x=>x.id===l.id?u:x));
+    setEditandoMulta(null);setNovoValorMulta("");setJustificativa("");
+  };
+
+  const zerarMulta=async(id)=>{
+    const l=lancamentos.find(x=>x.id===id);if(!l)return;
+    const u={...l,valor:0,pago:true,justificativa:"Multa dispensada pelo gestor",editadoEm:new Date().toISOString()};
     await setDoc(doc(db,"lancamentos",id),u);
     setLancamentos(prev=>prev.map(x=>x.id===id?u:x));
   };
@@ -955,17 +992,48 @@ function HistoricoView(){
             <Stat label="Pendente" value={fmtR(totalMultas-multasPagas)} color={C.warning}/>
           </div>
           {lancamentos.map(l=>(
-            <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:600,color:C.text}}>{l.userName}</div>
-                <div style={{fontSize:12,color:C.textMid}}>{l.descricao}</div>
+            <div key={l.id} style={{background:C.surfaceAlt,borderRadius:10,padding:12,marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:l.justificativa?6:0}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:600,color:C.text}}>{l.userName}</div>
+                  <div style={{fontSize:12,color:C.textMid}}>{l.descricao}</div>
+                  {l.justificativa&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>📝 {l.justificativa}</div>}
+                </div>
+                <span style={{fontSize:15,fontWeight:800,color:l.valor===0?C.muted:C.danger}}>{l.valor===0?"Dispensada":fmtR(l.valor)}</span>
               </div>
-              <span style={{fontSize:14,fontWeight:700,color:C.danger}}>{fmtR(l.valor)}</span>
-              <button onClick={()=>togglePagoMulta(l.id)} style={{background:l.pago?C.successLight:C.warningLight,color:l.pago?C.success:C.warning,border:`1px solid ${l.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                {l.pago?"✓ Pago":"Pendente"}
-              </button>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button onClick={()=>togglePagoMulta(l.id)} style={{background:l.pago?C.successLight:C.warningLight,color:l.pago?C.success:C.warning,border:`1px solid ${l.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  {l.pago?"✓ Pago":"Pendente"}
+                </button>
+                <button onClick={()=>{setEditandoMulta(l);setNovoValorMulta(String(l.valor||0));setJustificativa(l.justificativa||"");}} style={{background:C.accentLight,color:C.accent,border:`1px solid ${C.accent}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  ✏️ Editar valor
+                </button>
+                {l.valor>0&&<button onClick={()=>zerarMulta(l.id)} style={{background:C.successLight,color:C.success,border:`1px solid ${C.success}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  Dispensar multa
+                </button>}
+              </div>
             </div>
           ))}
+          {editandoMulta&&(
+            <div style={{position:"fixed",inset:0,background:"#00000060",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+              <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:24,width:"100%",maxWidth:400}}>
+                <h3 style={{margin:"0 0 16px",color:C.text}}>Editar Multa</h3>
+                <p style={{color:C.textMid,fontSize:13,margin:"0 0 14px"}}>Profissional: <strong>{editandoMulta.userName}</strong></p>
+                <div style={{marginBottom:14}}>
+                  <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Novo valor (R$)</label>
+                  <input type="number" value={novoValorMulta} onChange={e=>setNovoValorMulta(e.target.value)} style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{marginBottom:16}}>
+                  <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Justificativa</label>
+                  <input type="text" value={justificativa} onChange={e=>setJustificativa(e.target.value)} placeholder="Ex: Benefício concedido pelo gestor" style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+                  <Btn variant="secondary" onClick={()=>setEditandoMulta(null)}>Cancelar</Btn>
+                  <Btn onClick={salvarEdicaoMulta}>Salvar</Btn>
+                </div>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
