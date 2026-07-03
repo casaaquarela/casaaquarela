@@ -982,6 +982,7 @@ function CobrancasView({reservas,setReservas,config}){
   const[mes,setMes]=useState(new Date().getMonth());
   const[ano,setAno]=useState(new Date().getFullYear());
   const[lancamentos,setLancamentos]=useState([]);
+  const[filtroPro,setFiltroPro]=useState("");
 
   useEffect(()=>{
     const unsub=onSnapshot(collection(db,"lancamentos"),snap=>{
@@ -996,7 +997,6 @@ function CobrancasView({reservas,setReservas,config}){
   const lista=reservas.filter(r=>(r.date?.slice(0,7)===mesStr)||(r.modo==="mensal"&&r.mesMensal===mesStr));
   const multasMes=lancamentos.filter(l=>(l.date?.slice(0,7)===mesStr)||(l.criadoEm?.slice(0,7)===mesStr));
 
-  // Coleta todos os userIds do mês
   const todosIds={};
   lista.forEach(r=>{if(r.userId&&r.userName)todosIds[r.userId]=r.userName;});
   multasMes.forEach(l=>{if(l.userId&&l.userName)todosIds[l.userId]=l.userName;});
@@ -1021,54 +1021,85 @@ function CobrancasView({reservas,setReservas,config}){
     setLancamentos(prev=>prev.map(x=>x.id===id?u:x));
   };
   const quitarTudo=async(userId)=>{
-    // Quita reservas
     const idsRes=lista.filter(r=>r.userId===userId&&!r.pago).map(r=>r.id);
     for(const id of idsRes){const r=reservas.find(x=>x.id===id);if(r){await setDoc(doc(db,"reservas",id),{...r,pago:true});}}
     setReservas(prev=>prev.map(r=>idsRes.includes(r.id)?{...r,pago:true}:r));
-    // Quita multas
     const idsMultas=multasMes.filter(l=>l.userId===userId&&!l.pago&&l.valor>0).map(l=>l.id);
     for(const id of idsMultas){const l=lancamentos.find(x=>x.id===id);if(l){await setDoc(doc(db,"lancamentos",id),{...l,pago:true});}}
     setLancamentos(prev=>prev.map(l=>idsMultas.includes(l.id)?{...l,pago:true}:l));
   };
 
-  const porUser=Object.entries(todosIds).map(([userId,name])=>{
-    const rs=lista.filter(r=>r.userId===userId);
-    const ms=multasMes.filter(l=>l.userId===userId);
-    const totalRes=rs.reduce((s,r)=>s+Number(r.valor||0),0);
-    const totalMul=ms.reduce((s,l)=>s+Number(l.valor||0),0);
-    const pagoRes=rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
-    const pagoMul=ms.filter(l=>l.pago||l.valor===0).reduce((s,l)=>s+Number(l.valor||0),0);
-    return{userId,name,reservas:rs,multas:ms,totalRes,totalMul,total:totalRes+totalMul,pago:pagoRes+pagoMul};
-  }).filter(p=>p.total>0||p.reservas.length>0);
+  const porUser=Object.entries(todosIds)
+    .filter(([userId])=>!filtroPro||userId===filtroPro)
+    .map(([userId,name])=>{
+      const rs=lista.filter(r=>r.userId===userId);
+      const ms=multasMes.filter(l=>l.userId===userId);
+      const totalRes=rs.reduce((s,r)=>s+Number(r.valor||0),0);
+      const totalMul=ms.reduce((s,l)=>s+Number(l.valor||0),0);
+      const pagoRes=rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
+      const pagoMul=ms.filter(l=>l.pago||l.valor===0).reduce((s,l)=>s+Number(l.valor||0),0);
+      return{userId,name,reservas:rs,multas:ms,totalRes,totalMul,total:totalRes+totalMul,pago:pagoRes+pagoMul};
+    }).filter(p=>p.reservas.length>0||p.multas.length>0);
+
+  const opcoesProf=[{value:"",label:"Todos os profissionais"},...Object.entries(todosIds).map(([id,name])=>({value:id,label:name}))];
+
+  // Componente de linha padrao
+  const LinhaItem=({data,sala,tipo,horario,valor,pago,onToggle,isMulta,dispensada,justificativa})=>(
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 0",borderTop:`1px solid ${C.border}`,flexWrap:"wrap"}}>
+      <div style={{fontSize:13,color:C.textMid,minWidth:86,flexShrink:0}}>{data}</div>
+      {sala&&<SalaTag salaId={sala} salas={salas}/>}
+      {tipo&&<Badge label={tipo} bg={isMulta?C.dangerLight:C.accentLight} color={isMulta?C.danger:C.accent}/>}
+      {horario&&<span style={{fontSize:12,color:C.textMid}}>{horario}</span>}
+      {justificativa&&<span style={{fontSize:11,color:C.muted,fontStyle:"italic",flex:1}}>📝 {justificativa}</span>}
+      <span style={{flex:1}}/>
+      <span style={{fontSize:14,fontWeight:700,color:isMulta&&!dispensada?C.danger:C.text,flexShrink:0}}>
+        {dispensada?"Dispensada":fmtR(valor)}
+      </span>
+      {dispensada
+        ?<Badge label="Dispensada" bg={C.successLight} color={C.success}/>
+        :<button onClick={onToggle} style={{background:pago?C.successLight:isMulta?C.dangerLight:C.warningLight,color:pago?C.success:isMulta?C.danger:C.warning,border:`1px solid ${pago?C.success:isMulta?C.danger:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+          {pago?"✓ Pago":"Pendente"}
+        </button>
+      }
+    </div>
+  );
 
   return(
     <div>
-      <h2 style={{margin:"0 0 24px",color:C.text,fontSize:22,fontWeight:800}}>Cobranças</h2>
+      <h2 style={{margin:"0 0 20px",color:C.text,fontSize:22,fontWeight:800}}>Cobranças</h2>
+
+      {/* Filtros */}
       <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
         <div style={{width:140}}><Field label="Mês" value={mes} onChange={v=>setMes(Number(v))} options={MONTH_SHORT.map((n,i)=>({value:i,label:n}))}/></div>
         <div style={{width:90}}><Field label="Ano" value={ano} onChange={v=>setAno(Number(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:String(y)}))}/></div>
+        <div style={{flex:1,minWidth:200}}><Field label="Profissional" value={filtroPro} onChange={setFiltroPro} options={opcoesProf}/></div>
       </div>
 
+      {/* Vencimento */}
       <div style={{background:C.warningLight,border:`1px solid ${C.warning}33`,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:C.textMid}}>
         📅 Vencimento de <strong>{MONTH_FULL[mes]}/{ano}</strong>: <strong style={{color:C.danger}}>{fmt(vencimentoMes(mesStr))}</strong>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:24}}>
+      {/* Totais gerais */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:12,marginBottom:24}}>
         <Stat label="Reservas" value={fmtR(totalReservas)} color={C.text}/>
         <Stat label="Multas" value={fmtR(totalMultas)} color={C.danger}/>
-        <Stat label="Total geral" value={fmtR(totalGeral)} color={C.text}/>
+        <Stat label="Total" value={fmtR(totalGeral)} color={C.text}/>
         <Stat label="Recebido" value={fmtR(totalPago)} color={C.success}/>
         <Stat label="Pendente" value={fmtR(totalGeral-totalPago)} color={C.warning}/>
       </div>
 
+      {/* Por profissional */}
       {porUser.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhuma movimentação neste período.</p></Card>}
       {porUser.map(pro=>(<Card key={pro.userId} style={{marginBottom:16}}>
+
+        {/* Cabeçalho do profissional */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <span style={{fontWeight:700,color:C.text,fontSize:15}}>{pro.name}</span>
+          <span style={{fontWeight:800,color:C.text,fontSize:15}}>{pro.name}</span>
           <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
             <div style={{fontSize:13,color:C.textMid}}>
               Reservas: <strong>{fmtR(pro.totalRes)}</strong>
-              {pro.totalMul>0&&<span> · Multas: <strong style={{color:C.danger}}>{fmtR(pro.totalMul)}</strong></span>}
+              {pro.totalMul>0&&<> · Multas: <strong style={{color:C.danger}}>{fmtR(pro.totalMul)}</strong></>}
             </div>
             {pro.total-pro.pago>0
               ?<><span style={{fontSize:13,color:C.warning,fontWeight:700}}>{fmtR(pro.total-pro.pago)} pendente</span>
@@ -1080,40 +1111,45 @@ function CobrancasView({reservas,setReservas,config}){
 
         {/* Reservas */}
         {pro.reservas.length>0&&(<>
-          <div style={{fontSize:12,color:C.muted,fontWeight:600,marginBottom:6,marginTop:4}}>RESERVAS</div>
-          {pro.reservas.map(r=>(<div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:`1px solid ${C.border}`}}>
-            <div style={{fontSize:13,color:C.textMid,minWidth:86}}>{fmt(r.date)}</div>
-            <SalaTag salaId={r.sala} salas={salas}/>
-            <Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/>
-            <span style={{flex:1}}/>
-            <span style={{fontSize:14,fontWeight:600,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</span>
-            <button onClick={()=>togglePago(r.id)} style={{background:r.pago?C.successLight:C.warningLight,color:r.pago?C.success:C.warning,border:`1px solid ${r.pago?C.success:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-              {r.pago?"✓ Pago":"Pendente"}
-            </button>
-          </div>))}
+          <div style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:4,marginBottom:2}}>Reservas</div>
+          {pro.reservas.map(r=>(
+            <LinhaItem key={r.id}
+              data={fmt(r.date)}
+              sala={r.sala}
+              tipo={modoLabel[r.modo]||r.modo}
+              horario={r.horaInicio&&r.horaFim?`${r.horaInicio}–${r.horaFim}`:""}
+              valor={r.valor||0}
+              pago={r.pago}
+              onToggle={()=>togglePago(r.id)}
+              isMulta={false}
+            />
+          ))}
         </>)}
 
         {/* Multas */}
         {pro.multas.length>0&&(<>
-          <div style={{fontSize:12,color:C.danger,fontWeight:600,marginBottom:6,marginTop:12}}>MULTAS POR CANCELAMENTO</div>
-          {pro.multas.map(l=>(<div key={l.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:`1px solid ${C.border}`}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:13,color:C.textMid}}>{l.descricao||"Multa de cancelamento"}</div>
-              {l.justificativa&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>📝 {l.justificativa}</div>}
-            </div>
-            <span style={{fontSize:14,fontWeight:600,color:l.valor===0?C.muted:C.danger}}>{l.valor===0?"Dispensada":fmtR(l.valor)}</span>
-            {l.valor===0
-              ?<Badge label="Dispensada" bg={C.successLight} color={C.success}/>
-              :<button onClick={()=>togglePagoMulta(l.id)} style={{background:l.pago?C.successLight:C.dangerLight,color:l.pago?C.success:C.danger,border:`1px solid ${l.pago?C.success:C.danger}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                {l.pago?"✓ Pago":"Pendente"}
-              </button>
-            }
-          </div>))}
+          <div style={{fontSize:11,color:C.danger,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:14,marginBottom:2}}>Multas por cancelamento</div>
+          {pro.multas.map(l=>(
+            <LinhaItem key={l.id}
+              data={fmt(l.date)}
+              sala={l.sala||null}
+              tipo="Cancelamento"
+              horario={l.horaInicio&&l.horaFim?`${l.horaInicio}–${l.horaFim}`:""}
+              valor={l.valor||0}
+              pago={l.pago}
+              onToggle={()=>togglePagoMulta(l.id)}
+              isMulta={true}
+              dispensada={l.valor===0}
+              justificativa={l.justificativa}
+            />
+          ))}
         </>)}
+
       </Card>))}
     </div>
   );
 }
+
 
 
 function ProfissionaisView(){
