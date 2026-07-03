@@ -641,25 +641,67 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 
 function PendenciasView({reservas,userProfile,config}){
   const salas=config.salas||[];
+  const[lancamentos,setLancamentos]=useState([]);
+  useEffect(()=>{
+    const unsub=onSnapshot(collection(db,"lancamentos"),snap=>{
+      setLancamentos(snap.docs.map(d=>({id:d.id,...d.data()})).filter(l=>l.userId===userProfile.uid));
+    });
+    return unsub;
+  },[userProfile.uid]);
+
   const minhas=reservas.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date));
-  const pendente=minhas.filter(r=>!r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
-  const pago=minhas.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
+
+  const totalReservas=minhas.reduce((s,r)=>s+Number(r.valor||0),0);
+  const multasPendentes=lancamentos.filter(l=>!l.pago&&l.valor>0).reduce((s,l)=>s+Number(l.valor||0),0);
+  const multasPagas=lancamentos.filter(l=>l.pago).reduce((s,l)=>s+Number(l.valor||0),0);
+  const totalPendente=minhas.filter(r=>!r.pago).reduce((s,r)=>s+Number(r.valor||0),0)+multasPendentes;
+
   return(
     <div>
       <h2 style={{margin:"0 0 24px",color:C.text,fontSize:22,fontWeight:800}}>Minhas Pendências</h2>
       <AlertasVencimento reservas={minhas}/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:16,marginBottom:24}}>
-        <Stat label="A pagar" value={fmtR(pendente)} color={C.warning} sub={`${minhas.filter(r=>!r.pago).length} reservas`}/>
-        <Stat label="Já pago" value={fmtR(pago)} color={C.success} sub={`${minhas.filter(r=>r.pago).length} reservas`}/>
-        <Stat label="Total" value={fmtR(pendente+pago)} color={C.text} sub="histórico"/>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:24}}>
+        <Stat label="Total a pagar" value={fmtR(totalPendente)} color={C.warning}/>
+        <Stat label="Reservas" value={fmtR(totalReservas)} color={C.text} sub="valor total"/>
+        {multasPendentes>0&&<Stat label="Multas pendentes" value={fmtR(multasPendentes)} color={C.danger}/>}
+        {multasPagas>0&&<Stat label="Multas pagas" value={fmtR(multasPagas)} color={C.muted}/>}
       </div>
+
+      {/* Multas */}
+      {lancamentos.length>0&&(
+        <Card style={{marginBottom:16,border:`1px solid ${C.danger}33`}}>
+          <h3 style={{margin:"0 0 14px",color:C.danger,fontSize:15,fontWeight:700}}>⚠️ Multas por cancelamento</h3>
+          {lancamentos.map(l=>(
+            <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.text}}>{l.descricao}</div>
+                {l.justificativa&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>📝 {l.justificativa}</div>}
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:14,fontWeight:800,color:l.valor===0?C.muted:C.danger}}>
+                  {l.valor===0?"Dispensada":fmtR(l.valor)}
+                </div>
+                <Badge label={l.pago||l.valor===0?"✓ Quitada":"Pendente"} bg={l.pago||l.valor===0?C.successLight:C.dangerLight} color={l.pago||l.valor===0?C.success:C.danger}/>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* Reservas */}
       <Card>
+        <h3 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>📅 Minhas reservas</h3>
         {minhas.length===0&&<p style={{color:C.muted,margin:0}}>Você ainda não tem reservas.</p>}
         {minhas.map(r=>(<div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${C.border}`}}>
           <div style={{flex:1}}>
             <div style={{fontSize:14,fontWeight:600,color:C.text}}>{fmt(r.date)} · {r.horaInicio}–{r.horaFim} {r.modalidade==="online"?"💻":""}</div>
-            <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}><SalaTag salaId={r.sala} salas={salas}/><Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/></div>
+            <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
+              <SalaTag salaId={r.sala} salas={salas}/>
+              <Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/>
+              {r.recorrencia&&r.recorrencia!=="unica"&&<Badge label="↻ Recorrente" bg={C.fixoLight} color={C.fixo}/>}
+            </div>
           </div>
           <div style={{textAlign:"right"}}>
             <div style={{fontSize:15,fontWeight:800,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</div>
