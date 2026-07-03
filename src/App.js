@@ -644,14 +644,17 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
       if(conflito(reservas,nova,[editando.id])){
         alert("Já existe uma reserva nessa sala nesse horário.");return;
       }
-      // salva histórico
-      await setDoc(doc(db,"historico",uid()),cleanObj({
-        tipo:"edicao",reservaId:editando.id,
-        userId:userProfile.uid,userName:userProfile.nome||userProfile.email,
-        antes:{date:editando.date,horaInicio:editando.horaInicio,horaFim:editando.horaFim,sala:editando.sala},
-        depois:{date:geradas[0].date,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim,sala:geradas[0].sala},
+      // salva histórico de edição
+      const hDocEdit={
+        tipo:"edicao",
+        reservaId:editando.id||"",
+        userId:userProfile.uid||"",
+        userName:userProfile.nome||userProfile.email||"",
+        antes:{date:editando.date||"",horaInicio:editando.horaInicio||"",horaFim:editando.horaFim||"",sala:editando.sala||""},
+        depois:{date:geradas[0].date||"",horaInicio:geradas[0].horaInicio||"",horaFim:geradas[0].horaFim||"",sala:geradas[0].sala||""},
         editadoEm:new Date().toISOString()
-      }));
+      };
+      await setDoc(doc(db,"historico",uid()),hDocEdit);
       // Atualiza a reserva atual
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
@@ -687,20 +690,22 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         await setDoc(doc(db,"reservas",g.id),cleanObj(g));
         setReservas(prev=>[...prev,g]);
       }
-      // Registra criação no histórico (só a primeira da série)
-      await setDoc(doc(db,"historico",uid()),cleanObj({
+      // Registra criação no histórico
+      const hId=uid();
+      const hDoc={
         tipo:"criacao",
-        userId:userProfile.uid,
-        userName:userProfile.nome||userProfile.email,
-        date:geradas[0].date,
-        horaInicio:geradas[0].horaInicio,
-        horaFim:geradas[0].horaFim,
-        sala:geradas[0].sala,
-        modo:geradas[0].modo,
+        userId:userProfile.uid||"",
+        userName:userProfile.nome||userProfile.email||"",
+        date:geradas[0].date||"",
+        horaInicio:geradas[0].horaInicio||"",
+        horaFim:geradas[0].horaFim||"",
+        sala:geradas[0].sala||"",
+        modo:geradas[0].modo||"avulsa",
         recorrencia:geradas[0].recorrencia||"unica",
-        totalGeradas:geradas.length,
+        totalGeradas:geradas.length||1,
         criadoEm:new Date().toISOString()
-      }));
+      };
+      await setDoc(doc(db,"historico",hId),hDoc);
     }
   };
   const confirmarExcluir=async(opcao)=>{
