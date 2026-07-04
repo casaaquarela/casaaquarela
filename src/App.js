@@ -305,7 +305,8 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   const hStart=horaParaMin(config.horaInicio||"08:00");
   const hEnd=horaParaMin(config.horaFim||"21:00");
   const horaOptions=[];
-  for(let m=hStart;m<=hEnd;m+=30){const hh=Math.floor(m/60),mn=m%60;const ts=String(hh).padStart(2,"0")+":"+String(mn).padStart(2,"0");horaOptions.push({value:ts,label:ts});}
+  // Apenas horas cheias (08:00, 09:00, ..., 21:00)
+  for(let m=hStart;m<=hEnd;m+=60){const hh=Math.floor(m/60);const ts=String(hh).padStart(2,"0")+":00";horaOptions.push({value:ts,label:ts});}
 
   let horaInicio="",horaFim="",valor=0,resumoValor="";
   if(!mensal){
@@ -360,7 +361,20 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           <div style={{display:"flex",gap:8}}>{modoBtn("avulsa","Hora Avulsa",fmtR(config.valorHoraAvulsa)+"/h")}{modoBtn("periodo","Período","valor por período")}</div>
         </div>
         <Field label="Data" type="date" value={data} onChange={setData}/>
-        {modo==="avulsa"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}><Field label="Início" value={hIni} onChange={setHIni} options={horaOptions}/><Field label="Fim" value={hFim} onChange={setHFim} options={horaOptions}/></div>}
+        {modo==="avulsa"&&(
+          <div>
+            <Field label="Início (fim automático: +1 hora)" value={hIni} onChange={v=>{
+              setHIni(v);
+              // Calcula fim automaticamente: +1 hora
+              const[hh,mm]=v.split(":").map(Number);
+              const fimH=hh+1;
+              if(fimH<=23) setHFim(String(fimH).padStart(2,"0")+":"+String(mm).padStart(2,"0"));
+            }} options={horaOptions}/>
+            <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"8px 14px",fontSize:13,color:C.textMid,marginTop:-8,marginBottom:14}}>
+              Horário: <strong style={{color:C.accent}}>{hIni} – {hFim}</strong> (1 hora)
+            </div>
+          </div>
+        )}
         {modo==="periodo"&&(<div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Período</label>
           <div style={{display:"flex",gap:8}}>{Object.entries(periodos).map(([k,p])=>(<button key={k} onClick={()=>setPeriodo(k)} style={{flex:1,padding:"10px 8px",border:`2px solid ${periodo===k?C.accent:C.border}`,borderRadius:10,background:periodo===k?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:periodo===k?C.accent:C.text}}>{p.label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{p.inicio}–{p.fim}</div><div style={{fontSize:12,color:periodo===k?C.accent:C.textMid,fontWeight:600,marginTop:2}}>{fmtR(p.valor)}</div></button>))}</div>
@@ -616,8 +630,9 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const lista=minhasReservas.filter(r=>!filtroDt||r.date===filtroDt).sort((a,b)=>(a.date+a.horaInicio).localeCompare(b.date+b.horaInicio));
 
   const abrirNovo=(date,hora,salaId)=>{
-    const hh=hora!=null?String(Math.floor(hora)).padStart(2,"0")+":00":"09:00";
-    const hf=hora!=null?String(Math.floor(hora)+1).padStart(2,"0")+":00":"10:00";
+    const hNum=hora!=null?Math.floor(hora):9;
+    const hh=String(hNum).padStart(2,"0")+":00";
+    const hf=String(Math.min(hNum+1,23)).padStart(2,"0")+":00";
     setSlotPre({date:date||today(),horaInicio:hh,horaFim:hf,sala:salaId||salas[0]?.id});
     setEditando(null);setModalAberto(true);
   };
@@ -651,7 +666,9 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         if(editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim) mudancas.push("horario");
         if(editando.sala!==geradas[0].sala) mudancas.push("sala");
         if(editando.modalidade!==geradas[0].modalidade) mudancas.push("modalidade");
-        if((editando.recorrencia||"unica")!==(geradas[0].recorrencia||"unica")) mudancas.push("recorrencia");
+        const recAntes=editando.recorrencia||"unica";
+        const recDepois=geradas[0].recorrencia||"unica";
+        if(recAntes!==recDepois) mudancas.push("recorrencia");
         const hDocEdit={
           tipo:"edicao",
           reservaId:String(editando.id||""),
