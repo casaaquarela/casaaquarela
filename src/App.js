@@ -408,7 +408,10 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,onBlockClick,config
   const hStart=horaParaMin(config.horaInicio||"08:00");
   const hEnd=horaParaMin(config.horaFim||"21:00");
   const horas=[];
-  for(let m=hStart;m<hEnd;m+=60)horas.push(m/60);
+  // Sempre horas cheias: 8, 9, 10... 20
+  const hStartH=Math.ceil(hStart/60);
+  const hEndH=Math.floor(hEnd/60);
+  for(let h=hStartH;h<hEndH;h++)horas.push(h);
   const dias=Array.from({length:7},(_,i)=>{const d=new Date(semanaBase);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);});
   const getR=(dia,h,salaId)=>reservas.filter(r=>r.date===dia&&r.sala===salaId&&horaParaMin(r.horaInicio)<=h*60&&horaParaMin(r.horaFim)>h*60);
   return(
@@ -630,9 +633,9 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const lista=minhasReservas.filter(r=>!filtroDt||r.date===filtroDt).sort((a,b)=>(a.date+a.horaInicio).localeCompare(b.date+b.horaInicio));
 
   const abrirNovo=(date,hora,salaId)=>{
-    const hNum=hora!=null?Math.floor(hora):9;
+    const hNum=hora!=null?Math.floor(Number(hora)):9;
     const hh=String(hNum).padStart(2,"0")+":00";
-    const hf=String(Math.min(hNum+1,23)).padStart(2,"0")+":00";
+    const hf=String(Math.min(hNum+1,21)).padStart(2,"0")+":00";
     setSlotPre({date:date||today(),horaInicio:hh,horaFim:hf,sala:salaId||salas[0]?.id});
     setEditando(null);setModalAberto(true);
   };
@@ -1552,21 +1555,21 @@ function HistoricoView(){
                           </div>
                         );
                       }
-                      if(mods.includes("recorrencia")){
+                      if(mods.includes("recorrencia")||(h.antesRecorrencia&&h.depoisRecorrencia&&h.antesRecorrencia!==h.depoisRecorrencia)){
+                        const rLabel={unica:"Avulsa (não se repete)",semanal:"Semanalmente",quinzenal:"Quinzenalmente"};
                         linhas.push(
-                          <div key="rec" style={{marginTop:2}}>
-                            Recorrência: <strong>{modLabel[h.antesRecorrencia]||h.antesRecorrencia}</strong>
-                            <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
-                            <strong>{modLabel[h.depoisRecorrencia]||h.depoisRecorrencia}</strong>
+                          <div key="rec" style={{marginTop:2,background:C.fixoLight,borderRadius:6,padding:"4px 8px",display:"inline-flex",alignItems:"center",gap:6}}>
+                            <span style={{color:C.fixo,fontWeight:600}}>↻ Recorrência:</span>
+                            <strong style={{color:C.text}}>{rLabel[h.antesRecorrencia]||h.antesRecorrencia||"Avulsa"}</strong>
+                            <span style={{color:C.accent,fontWeight:700}}>→</span>
+                            <strong style={{color:C.text}}>{rLabel[h.depoisRecorrencia]||h.depoisRecorrencia||"Avulsa"}</strong>
                           </div>
                         );
                       }
                       if(linhas.length===0){
                         linhas.push(
-                          <div key="gen">
-                            <strong>{fmt(h.antesDate||h.antes?.date)}</strong> {h.antesInicio||h.antes?.horaInicio}–{h.antesFim||h.antes?.horaFim}
-                            <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
-                            <strong>{fmt(h.depoisDate||h.depois?.date)}</strong> {h.depoisInicio||h.depois?.horaInicio}–{h.depoisFim||h.depois?.horaFim}
+                          <div key="gen" style={{color:C.muted,fontStyle:"italic"}}>
+                            Edição realizada
                           </div>
                         );
                       }
