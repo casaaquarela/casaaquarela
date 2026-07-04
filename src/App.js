@@ -379,13 +379,24 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Período</label>
           <div style={{display:"flex",gap:8}}>{Object.entries(periodos).map(([k,p])=>(<button key={k} onClick={()=>setPeriodo(k)} style={{flex:1,padding:"10px 8px",border:`2px solid ${periodo===k?C.accent:C.border}`,borderRadius:10,background:periodo===k?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:periodo===k?C.accent:C.text}}>{p.label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{p.inicio}–{p.fim}</div><div style={{fontSize:12,color:periodo===k?C.accent:C.textMid,fontWeight:600,marginTop:2}}>{fmtR(p.valor)}</div></button>))}</div>
         </div>)}
-        <Field label="Recorrência" value={recorrencia} onChange={setRecorrencia}
-          helper={isEdit?"Ao salvar, cria novas reservas recorrentes a partir desta data":undefined}
-          options={[
-            {value:"unica",label:"Avulsa (não se repete)"},
-            {value:"semanal",label:"Semanalmente"},
-            {value:"quinzenal",label:"Quinzenalmente"},
-          ]}/>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>
+            Recorrência <span style={{color:C.danger}}>*</span>
+          </label>
+          <div style={{display:"flex",gap:8}}>
+            {[
+              {value:"unica",label:"Avulsa"},
+              {value:"semanal",label:"Semanal"},
+              {value:"quinzenal",label:"Quinzenal"},
+            ].map(op=>(
+              <button key={op.value} onClick={()=>setRecorrencia(op.value)}
+                style={{flex:1,padding:"10px 8px",border:`2px solid ${recorrencia===op.value?C.accent:C.border}`,borderRadius:10,background:recorrencia===op.value?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:13,color:recorrencia===op.value?C.accent:C.textMid,transition:"all 0.12s"}}>
+                {op.label}
+              </button>
+            ))}
+          </div>
+          {isEdit&&<div style={{fontSize:11,color:C.muted,marginTop:6}}>Ao salvar, cria novas reservas recorrentes a partir desta data.</div>}
+        </div>
         <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
           {resumoValor}
           {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(addMonths(data,6))}</span>}
@@ -744,6 +755,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
           sala:String(geradas[0].sala||""),
           modo:String(geradas[0].modo||"avulsa"),
           recorrencia:String(geradas[0].recorrencia||"unica"),
+          recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",
           totalGeradas:Number(geradas.length||1),
           criadoEm:new Date().toISOString()
         };
@@ -1499,11 +1511,15 @@ function HistoricoView(){
                 {h.tipo==="criacao"&&(
                   <div style={{fontSize:13,color:C.textMid}}>
                     <strong>{fmt(h.date)}</strong> · {h.horaInicio}–{h.horaFim} · <strong>{getSalaLabel(h.sala)}</strong>
-                    {h.recorrencia&&h.recorrencia!=="unica"&&(
-                      <span style={{color:C.fixo,marginLeft:6,fontSize:12}}>
-                        ↻ {h.recorrencia==="semanal"?"Semanal":"Quinzenal"} · {h.totalGeradas} reservas
-                      </span>
-                    )}
+                    <span style={{
+                      marginLeft:8,fontSize:12,fontWeight:600,
+                      color:h.recorrencia==="unica"?C.muted:C.fixo,
+                      background:h.recorrencia==="unica"?C.surfaceAlt:C.fixoLight,
+                      borderRadius:4,padding:"1px 7px"
+                    }}>
+                      {h.recorrencia==="semanal"?"↻ Semanal":h.recorrencia==="quinzenal"?"↻ Quinzenal":"Avulsa"}
+                      {h.recorrencia!=="unica"&&h.totalGeradas>1&&` · ${h.totalGeradas} reservas`}
+                    </span>
                   </div>
                 )}
 
