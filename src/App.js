@@ -644,27 +644,37 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
       if(conflito(reservas,nova,[editando.id])){
         alert("Já existe uma reserva nessa sala nesse horário.");return;
       }
-      // salva histórico de edição
+      // salva histórico de edição com todas as mudanças
       try{
+        const mudancas=[];
+        if(editando.date!==geradas[0].date) mudancas.push("data");
+        if(editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim) mudancas.push("horario");
+        if(editando.sala!==geradas[0].sala) mudancas.push("sala");
+        if(editando.modalidade!==geradas[0].modalidade) mudancas.push("modalidade");
+        if((editando.recorrencia||"unica")!==(geradas[0].recorrencia||"unica")) mudancas.push("recorrencia");
         const hDocEdit={
           tipo:"edicao",
           reservaId:String(editando.id||""),
           userId:String(userProfile.uid||""),
           userName:String(userProfile.nome||userProfile.email||""),
+          mudancas:mudancas.join(","),
           antesDate:String(editando.date||""),
           antesInicio:String(editando.horaInicio||""),
           antesFim:String(editando.horaFim||""),
           antesSala:String(editando.sala||""),
+          antesModalidade:String(editando.modalidade||"presencial"),
+          antesRecorrencia:String(editando.recorrencia||"unica"),
           depoisDate:String(geradas[0].date||""),
           depoisInicio:String(geradas[0].horaInicio||""),
           depoisFim:String(geradas[0].horaFim||""),
           depoisSala:String(geradas[0].sala||""),
+          depoisModalidade:String(geradas[0].modalidade||"presencial"),
+          depoisRecorrencia:String(geradas[0].recorrencia||"unica"),
           editadoEm:new Date().toISOString()
         };
         await setDoc(doc(db,"historico",uid()),hDocEdit);
       }catch(errH){
         console.error("Erro ao registrar histórico de edição:",errH);
-        alert("DEBUG histórico edição: "+errH.message);
       }
       // Atualiza a reserva atual
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
@@ -720,7 +730,6 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         await setDoc(doc(db,"historico",hId),hDoc);
       }catch(errH){
         console.error("Erro ao registrar histórico de criação:",errH);
-        alert("DEBUG histórico criação: "+errH.message);
       }
     }
   };
@@ -1361,9 +1370,10 @@ function ConfigView({config,setConfig}){
 function HistoricoView(){
   const[historico,setHistorico]=useState([]);
   const[users,setUsers]=useState([]);
-  const[reservas,setReservas]=useState([]);
+  const[reservasAll,setReservasAll]=useState([]);
   const[loading,setLoading]=useState(true);
   const[filtroPro,setFiltroPro]=useState("");
+  const[filtroTipo,setFiltroTipo]=useState("todos");
 
   useEffect(()=>{
     const u1=onSnapshot(collection(db,"historico"),snap=>{
@@ -1373,7 +1383,7 @@ function HistoricoView(){
       setUsers(snap.docs.map(d=>({id:d.id,...d.data()})));
     });
     const u3=onSnapshot(collection(db,"reservas"),snap=>{
-      setReservas(snap.docs.map(d=>({id:d.id,...d.data()})));
+      setReservasAll(snap.docs.map(d=>({id:d.id,...d.data()})));
       setLoading(false);
     });
     return()=>{u1();u2();u3();};
@@ -1383,97 +1393,103 @@ function HistoricoView(){
   const opcoesProf=[{value:"",label:"Todos os profissionais"},...profissionais.map(p=>({value:p.uid,label:p.nome||p.email}))];
 
   const fmtDtHr=(iso)=>{
-    if(!iso) return "";
+    if(!iso)return"";
     return new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
   };
 
-  const getSalaLabel=(salaId,config_)=>{
-    if(!salaId) return "";
-    if(salaId==="sala1") return "Sala 1";
-    if(salaId==="sala2") return "Sala 2";
+  const getSalaLabel=(salaId)=>{
+    if(!salaId)return"";
+    if(salaId==="sala1")return"Sala 1";
+    if(salaId==="sala2")return"Sala 2";
     return salaId;
   };
 
-  // Agrupa por profissional
-  const porPro=profissionais
-    .filter(p=>!filtroPro||p.uid===filtroPro)
-    .map(p=>{
-      // Histórico do profissional
-      const hPro=historico.filter(h=>h.userId===p.uid)
-        .sort((a,b)=>{
-          const dA=a.canceladoEm||a.editadoEm||"";
-          const dB=b.canceladoEm||b.editadoEm||"";
-          return dB.localeCompare(dA);
-        });
-      // Reservas ativas do profissional
-      const resPro=reservas.filter(r=>r.userId===p.uid);
-      return{...p,historico:hPro,totalReservas:resPro.length,reservasAtivas:resPro.filter(r=>!r.status||r.status!=="cancelado").length};
+  const getTimestamp=(h)=>h.canceladoEm||h.editadoEm||h.criadoEm||"";
+
+  // Filtra e ordena
+  const listaFiltrada=historico
+    .filter(h=>{
+      if(filtroPro&&h.userId!==filtroPro)return false;
+      if(filtroTipo==="reservas"&&h.tipo!=="criacao")return false;
+      if(filtroTipo==="cancelamentos"&&h.tipo!=="cancelamento")return false;
+      if(filtroTipo==="edicoes"&&h.tipo!=="edicao")return false;
+      return true;
     })
-    .filter(p=>p.historico.length>0||p.totalReservas>0);
+    .sort((a,b)=>getTimestamp(b).localeCompare(getTimestamp(a)));
+
+  const TipoBadge=({tipo})=>{
+    const cfg={
+      cancelamento:{bg:C.dangerLight,color:C.danger,label:"Cancelamento"},
+      criacao:{bg:C.successLight,color:C.success,label:"Nova reserva"},
+      edicao:{bg:C.accentLight,color:C.accent,label:"Edição"},
+    }[tipo]||{bg:C.surfaceAlt,color:C.muted,label:tipo};
+    return<span style={{background:cfg.bg,color:cfg.color,borderRadius:4,padding:"2px 8px",fontSize:11,fontWeight:700,flexShrink:0}}>{cfg.label}</span>;
+  };
+
+  const DotColor=({tipo})=>{
+    const colors={cancelamento:C.danger,criacao:C.success,edicao:C.accent};
+    return<div style={{width:8,height:8,borderRadius:"50%",background:colors[tipo]||C.muted,flexShrink:0,marginTop:6}}/>;
+  };
 
   if(loading)return<div style={{color:C.muted,padding:20}}>Carregando...</div>;
-
-  const TipoIcon=({tipo})=>{
-    if(tipo==="cancelamento")return<span style={{background:C.dangerLight,color:C.danger,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>Cancelamento</span>;
-    if(tipo==="edicao")return<span style={{background:C.accentLight,color:C.accent,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>Edição</span>;
-    if(tipo==="criacao")return<span style={{background:C.successLight,color:C.success,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>Nova reserva</span>;
-    return<span style={{background:C.surfaceAlt,color:C.muted,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>{tipo}</span>;
-  };
 
   return(
     <div>
       <h2 style={{margin:"0 0 8px",color:C.text,fontSize:22,fontWeight:800}}>Histórico</h2>
-      <p style={{color:C.muted,fontSize:13,margin:"0 0 20px"}}>Registro administrativo de todas as ações dos profissionais no sistema.</p>
+      <p style={{color:C.muted,fontSize:13,margin:"0 0 20px"}}>Registro de todas as ações dos profissionais no sistema.</p>
 
-      {/* Filtro */}
-      <div style={{maxWidth:320,marginBottom:20}}>
-        <Field label="Profissional" value={filtroPro} onChange={setFiltroPro} options={opcoesProf}/>
+      {/* Filtros */}
+      <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"flex-end"}}>
+        <div style={{flex:1,minWidth:200}}><Field label="Profissional" value={filtroPro} onChange={setFiltroPro} options={opcoesProf}/></div>
+        <div style={{display:"flex",gap:6,alignItems:"flex-end",paddingBottom:14}}>
+          {[
+            {value:"todos",label:"Tudo"},
+            {value:"reservas",label:"🟢 Reservas"},
+            {value:"cancelamentos",label:"🔴 Cancelamentos"},
+            {value:"edicoes",label:"🔵 Edições"},
+          ].map(op=>(
+            <button key={op.value} onClick={()=>setFiltroTipo(op.value)}
+              style={{padding:"8px 14px",border:`1px solid ${filtroTipo===op.value?C.accent:C.border}`,borderRadius:8,background:filtroTipo===op.value?C.accentLight:C.white,color:filtroTipo===op.value?C.accent:C.textMid,cursor:"pointer",fontFamily:"inherit",fontWeight:filtroTipo===op.value?700:500,fontSize:13}}>
+              {op.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {porPro.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhuma atividade registrada.</p></Card>}
-
-      {porPro.map(pro=>(
-        <Card key={pro.uid} style={{marginBottom:16}}>
-          {/* Cabeçalho do profissional */}
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,paddingBottom:12,borderBottom:`2px solid ${C.border}`}}>
-            <div style={{width:40,height:40,borderRadius:"50%",background:pro.color||C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:16,flexShrink:0}}>
-              {pro.nome?.charAt(0)?.toUpperCase()||"?"}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:16,fontWeight:800,color:C.text}}>{pro.nome||pro.email}</div>
-              <div style={{fontSize:12,color:C.muted}}>{pro.email}</div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:12,color:C.muted}}>Cadastro</div>
-              <div style={{fontSize:12,color:C.textMid,fontWeight:600}}>{pro.criadoEm?fmtDtHr(pro.criadoEm):"—"}</div>
-            </div>
-          </div>
-
-          {/* Resumo */}
-          <div style={{display:"flex",gap:16,marginBottom:14,flexWrap:"wrap"}}>
-            <div style={{fontSize:13,color:C.textMid}}>📅 <strong>{pro.reservasAtivas}</strong> reservas ativas</div>
-            <div style={{fontSize:13,color:C.textMid}}>📋 <strong>{pro.historico.length}</strong> {pro.historico.length===1?"ação registrada":"ações registradas"}</div>
-          </div>
-
-          {/* Log de ações */}
-          {pro.historico.length===0&&(
-            <p style={{color:C.muted,fontSize:13,margin:0}}>Nenhuma alteração registrada ainda.</p>
-          )}
-          {pro.historico.map(h=>(
-            <div key={h.id} style={{display:"flex",gap:12,padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:h.tipo==="cancelamento"?C.danger:C.accent,flexShrink:0,marginTop:5}}/>
-              <div style={{flex:1}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap",marginBottom:3}}>
-                  <TipoIcon tipo={h.tipo}/>
-                  <span style={{fontSize:11,color:C.muted}}>
-                    🕐 {fmtDtHr(h.canceladoEm||h.editadoEm)}
-                  </span>
+      {/* Log unificado */}
+      <Card>
+        {listaFiltrada.length===0&&<p style={{color:C.muted,margin:0,fontSize:14}}>Nenhuma atividade encontrada.</p>}
+        {listaFiltrada.map(h=>{
+          const ts=getTimestamp(h);
+          const nomeUser=h.userName||users.find(u=>u.uid===h.userId)?.nome||"—";
+          return(
+            <div key={h.id} style={{display:"flex",gap:12,padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+              <DotColor tipo={h.tipo}/>
+              <div style={{flex:1,minWidth:0}}>
+                {/* Linha 1: badge + nome + timestamp */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <TipoBadge tipo={h.tipo}/>
+                    <span style={{fontSize:13,fontWeight:600,color:C.text}}>{nomeUser}</span>
+                  </div>
+                  <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>🕐 {fmtDtHr(ts)}</span>
                 </div>
+
+                {/* Linha 2: detalhes */}
+                {h.tipo==="criacao"&&(
+                  <div style={{fontSize:13,color:C.textMid}}>
+                    <strong>{fmt(h.date)}</strong> · {h.horaInicio}–{h.horaFim} · <strong>{getSalaLabel(h.sala)}</strong>
+                    {h.recorrencia&&h.recorrencia!=="unica"&&(
+                      <span style={{color:C.fixo,marginLeft:6,fontSize:12}}>
+                        ↻ {h.recorrencia==="semanal"?"Semanal":"Quinzenal"} · {h.totalGeradas} reservas
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {h.tipo==="cancelamento"&&(
                   <div style={{fontSize:13,color:C.textMid}}>
-                    Reserva de <strong>{fmt(h.date)}</strong> · {h.horaInicio}–{h.horaFim}
-                    {h.sala&&<span> · <strong>{getSalaLabel(h.sala)}</strong></span>}
+                    <strong>{fmt(h.date)}</strong> · {h.horaInicio}–{h.horaFim} · <strong>{getSalaLabel(h.sala)}</strong>
                     {h.escopo&&h.escopo!=="somente"&&(
                       <span style={{color:C.warning,marginLeft:6,fontSize:12}}>
                         ({h.escopo==="proximos"?"este e seguintes":"todos da série"})
@@ -1484,27 +1500,68 @@ function HistoricoView(){
 
                 {h.tipo==="edicao"&&(
                   <div style={{fontSize:13,color:C.textMid}}>
-                    <span>{fmt(h.antesDate||h.antes?.date)} {(h.antesInicio||h.antes?.horaInicio)}–{(h.antesFim||h.antes?.horaFim)}</span>
-                    <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
-                    <span>{fmt(h.depoisDate||h.depois?.date)} {(h.depoisInicio||h.depois?.horaInicio)}–{(h.depoisFim||h.depois?.horaFim)}</span>
-                    {(h.depoisSala||h.depois?.sala)&&<span> · <strong>{getSalaLabel(h.depoisSala||h.depois?.sala)}</strong></span>}
-                  </div>
-                )}
-                {h.tipo==="criacao"&&(
-                  <div style={{fontSize:13,color:C.textMid}}>
-                    {fmt(h.date)} · {h.horaInicio}–{h.horaFim} · <strong>{getSalaLabel(h.sala)}</strong>
-                    {h.recorrencia&&h.recorrencia!=="unica"&&(
-                      <span style={{color:C.fixo,marginLeft:6,fontSize:12}}>
-                        ↻ {h.recorrencia==="semanal"?"Semanal":"Quinzenal"} · {h.totalGeradas} reservas geradas
-                      </span>
-                    )}
+                    {/* Mostra cada tipo de mudança detectada */}
+                    {(()=>{
+                      const mods=h.mudancas?h.mudancas.split(","):["data","horario","sala"];
+                      const linhas=[];
+                      const modLabel={
+                        presencial:"🏢 Presencial",online:"💻 Online",
+                        unica:"Avulsa",semanal:"Semanal",quinzenal:"Quinzenal"
+                      };
+                      if(mods.includes("data")||mods.includes("horario")||(!h.mudancas)){
+                        linhas.push(
+                          <div key="dh">
+                            <strong>{fmt(h.antesDate||h.antes?.date)}</strong> {h.antesInicio||h.antes?.horaInicio}–{h.antesFim||h.antes?.horaFim}
+                            <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
+                            <strong>{fmt(h.depoisDate||h.depois?.date)}</strong> {h.depoisInicio||h.depois?.horaInicio}–{h.depoisFim||h.depois?.horaFim}
+                          </div>
+                        );
+                      }
+                      if(mods.includes("sala")){
+                        linhas.push(
+                          <div key="sala" style={{marginTop:2}}>
+                            Sala: <strong>{getSalaLabel(h.antesSala||h.antes?.sala)}</strong>
+                            <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
+                            <strong>{getSalaLabel(h.depoisSala||h.depois?.sala)}</strong>
+                          </div>
+                        );
+                      }
+                      if(mods.includes("modalidade")){
+                        linhas.push(
+                          <div key="mod" style={{marginTop:2}}>
+                            Modalidade: <strong>{modLabel[h.antesModalidade]||h.antesModalidade}</strong>
+                            <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
+                            <strong>{modLabel[h.depoisModalidade]||h.depoisModalidade}</strong>
+                          </div>
+                        );
+                      }
+                      if(mods.includes("recorrencia")){
+                        linhas.push(
+                          <div key="rec" style={{marginTop:2}}>
+                            Recorrência: <strong>{modLabel[h.antesRecorrencia]||h.antesRecorrencia}</strong>
+                            <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
+                            <strong>{modLabel[h.depoisRecorrencia]||h.depoisRecorrencia}</strong>
+                          </div>
+                        );
+                      }
+                      if(linhas.length===0){
+                        linhas.push(
+                          <div key="gen">
+                            <strong>{fmt(h.antesDate||h.antes?.date)}</strong> {h.antesInicio||h.antes?.horaInicio}–{h.antesFim||h.antes?.horaFim}
+                            <span style={{color:C.accent,margin:"0 6px",fontWeight:700}}>→</span>
+                            <strong>{fmt(h.depoisDate||h.depois?.date)}</strong> {h.depoisInicio||h.depois?.horaInicio}–{h.depoisFim||h.depois?.horaFim}
+                          </div>
+                        );
+                      }
+                      return linhas;
+                    })()}
                   </div>
                 )}
               </div>
             </div>
-          ))}
-        </Card>
-      ))}
+          );
+        })}
+      </Card>
     </div>
   );
 }
