@@ -298,7 +298,6 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   const[mesMensal,setMesMensal]=useState(base.mesMensal||today().slice(0,7));
   const[recorrencia,setRecorrencia]=useState(base.recorrencia||"unica");
   const[modalidade,setModalidade]=useState(base.modalidade||"presencial");
-  const[mensal,setMensal]=useState(base.modo==="mensal");
   const[notes,setNotes]=useState(base.notes||"");
   const[erro,setErro]=useState("");
 
@@ -309,38 +308,39 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   for(let m=hStart;m<=hEnd;m+=60){const hh=Math.floor(m/60);const ts=String(hh).padStart(2,"0")+":00";horaOptions.push({value:ts,label:ts});}
 
   let horaInicio="",horaFim="",valor=0,resumoValor="";
-  if(!mensal){
-    if(modo==="avulsa"){
-      horaInicio=hIni;horaFim=hFim;
-      const h=calcHoras(hIni,hFim);
-      const taxaHora=recorrencia==="semanal"?(config.valorHoraFixa||33):(config.valorHoraAvulsa||38);
-      valor=+(h*taxaHora).toFixed(2);
-      resumoValor=fmtR(valor)+(recorrencia==="semanal"?" (tarifa hora fixa)":"");
-    }
-    else if(modo==="periodo"){const p=periodos[periodo];horaInicio=p.inicio;horaFim=p.fim;valor=Number(p.valor||0);resumoValor=fmtR(valor);}
-  } else {horaInicio="00:00";horaFim="23:59";valor=0;resumoValor="A combinar com gestores";}
+  if(modo==="avulsa"){
+    horaInicio=hIni;horaFim=hFim;
+    const h=calcHoras(hIni,hFim);
+    const taxaHora=recorrencia==="semanal"?(config.valorHoraFixa||33):(config.valorHoraAvulsa||38);
+    valor=+(h*taxaHora).toFixed(2);
+    resumoValor=fmtR(valor)+(recorrencia==="semanal"?" (tarifa hora fixa)":"");
+  }
+  else if(modo==="periodo"){const p=periodos[periodo];horaInicio=p.inicio;horaFim=p.fim;valor=Number(p.valor||0);resumoValor=fmtR(valor);}
 
   const salvar=()=>{
     setErro("");
-    if(!mensal&&!data)return setErro("Preencha a data.");
+    if(!data)return setErro("Preencha a data.");
     if(!sala)return setErro("Selecione uma sala.");
-    if(!mensal&&modo==="avulsa"&&horaParaMin(hFim)<=horaParaMin(hIni))return setErro("Horário de fim deve ser após o início.");
+    if(modo==="avulsa"&&horaParaMin(hFim)<=horaParaMin(hIni))return setErro("Horário de fim deve ser após o início.");
     const dadosBase={
       id:isEdit?editando.id:uid(),
-      date:mensal?today():data,sala,horaInicio,horaFim,
-      modo:mensal?"mensal":modo,
-      periodo:modo==="periodo"&&!mensal?periodo:null,
-      mesMensal:mensal?mesMensal:null,
-      valor:valor||0,userId:userProfile.uid,userName:userProfile.displayName||userProfile.nome||userProfile.email||"",userColor:userProfile.color||"#B5590A",
-      notes:notes||"",pago:false,modalidade:modalidade||"presencial",
-      recorrencia:mensal?"unica":recorrencia||"unica",
+      date:data,sala,horaInicio,horaFim,
+      modo:modo,
+      periodo:modo==="periodo"?periodo:null,
+      valor:valor||0,
+      userId:userProfile.uid,
+      userName:userProfile.displayName||userProfile.nome||userProfile.email||"",
+      userColor:userProfile.color||"#B5590A",
+      notes:notes||"",pago:false,
+      modalidade:modalidade||"presencial",
+      recorrencia:recorrencia||"unica",
       serieId:null,serieInicio:null,serieFim:null
     };
-    if(!mensal&&!isEdit){
+    if(!isEdit){
       const nova={date:data,sala,horaInicio,horaFim};
       if(conflito(reservas,nova,[]))return setErro("Já existe uma reserva nessa sala nesse horário.");
     }
-    const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,mensal?"unica":recorrencia);
+    const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,recorrencia);
     onSave(geradas,isEdit);
     onClose();
   };
@@ -362,7 +362,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           {[["presencial","🏢 Presencial"],["online","💻 Online"]].map(([v,l])=>(<button key={v} onClick={()=>setModalidade(v)} style={{flex:1,padding:"9px",border:`2px solid ${modalidade===v?C.accent:C.border}`,borderRadius:10,background:modalidade===v?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:700,color:modalidade===v?C.accent:C.textMid,fontSize:13}}>{l}</button>))}
         </div>
       </div>
-      {!mensal&&(<>
+      <>
         <div style={{marginBottom:16}}>
           <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Tipo de reserva</label>
           <div style={{display:"flex",gap:8}}>{modoBtn("avulsa","Hora Avulsa",fmtR(config.valorHoraAvulsa)+"/h")}{modoBtn("periodo","Período","valor por período")}</div>
@@ -408,12 +408,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           {resumoValor}
           {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(addMonths(data,6))}</span>}
         </div>
-      </>)}
-      <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",border:`1px solid ${mensal?C.accent:C.border}`,borderRadius:10,cursor:"pointer",background:mensal?C.accentLight:C.white,marginBottom:14}}>
-        <input type="checkbox" checked={mensal} onChange={e=>setMensal(e.target.checked)} style={{accentColor:C.accent,width:16,height:16}}/>
-        <div><div style={{fontWeight:700,fontSize:14,color:mensal?C.accent:C.text}}>Mensalidade fixa</div><div style={{fontSize:12,color:C.muted}}>Valor a combinar com os gestores</div></div>
-      </label>
-      {mensal&&<Field label="Mês de referência" type="month" value={mesMensal} onChange={setMesMensal}/>}
+      </>
       <Field label="Observações" value={notes} onChange={setNotes} placeholder="Opcional..."/>
       {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:12}}>{erro}</div>}
       <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn variant="secondary" onClick={onClose}>Cancelar</Btn><Btn onClick={salvar}>Confirmar Reserva</Btn></div>
@@ -564,9 +559,9 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,isManager,sal
               )}
 
               {/* Excluir série - só gestor */}
-              {isManager&&reserva.serieId&&(
+              {isManager&&(
                 <Btn variant="warning" full onClick={onExcluir}>
-                  🗑️ Excluir da série
+                  🗑️ Excluir{reserva.serieId?" da série":""}
                 </Btn>
               )}
             </div>
@@ -906,6 +901,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
                   {isManager&&!cancelado&&<Btn variant="success" small onClick={()=>togglePago(r.id)}>{r.pago?"✓ Pago":"Marcar Pago"}</Btn>}
                   {(isManager||isOwn)&&!cancelado&&<Btn variant="secondary" small onClick={()=>setAcoes(r)}>Ver opções</Btn>}
                   {isManager&&<Btn variant="danger" small onClick={()=>setExcluindo(r)}>✕</Btn>}
+                  {/* Profissional não pode excluir semanal */}
                 </div>
               </div>
             );
