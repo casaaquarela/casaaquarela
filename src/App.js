@@ -346,7 +346,8 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   };
 
   const tarifaAvulsa=recorrencia==="semanal"?fmtR(config.valorHoraFixa||33)+"/h (fixa)":fmtR(config.valorHoraAvulsa||38)+"/h";
-  const modoBtn=(m,label,sub)=>(<button onClick={()=>{setModo(m);setMensal(false);}} style={{flex:1,padding:"10px 8px",border:`2px solid ${!mensal&&modo===m?C.accent:C.border}`,borderRadius:10,background:!mensal&&modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:!mensal&&modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{m==="avulsa"?tarifaAvulsa:sub}</div></button>);
+  const tarifaAvulsa=recorrencia==="semanal"?fmtR(config.valorHoraFixa||33)+"/h (fixa)":fmtR(config.valorHoraAvulsa||38)+"/h";
+  const modoBtn=(m,label,sub)=>(<button onClick={()=>setModo(m)} style={{flex:1,padding:"10px 8px",border:`2px solid ${modo===m?C.accent:C.border}`,borderRadius:10,background:modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{m==="avulsa"?tarifaAvulsa:sub}</div></button>);
 
   return(
     <Modal title={isEdit?"Editar Reserva":"Nova Reserva"} onClose={onClose}>
