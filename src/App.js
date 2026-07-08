@@ -6,10 +6,9 @@ import { auth, db } from "./firebase";
 
 const C = {
   bg:"#F7F4EE",white:"#FFFFFF",surface:"#FFFFFF",surfaceAlt:"#F0EBE0",border:"#DDD5C0",
-  accent:"#E8A830",accentLight:"#FEF6E0",text:"#3D3228",textMid:"#5C4A3A",muted:"#9A8878",
-  danger:"#C0392B",dangerLight:"#FDECEA",success:"#8BAF8A",successLight:"#EEF5EE",
+  accent:"#4A7C4E",accentLight:"#EEF5EE",text:"#2C3E2D",textMid:"#4A5C4B",muted:"#8A9E8B",
+  danger:"#C0392B",dangerLight:"#FDECEA",success:"#4A7C4E",successLight:"#EEF5EE",
   warning:"#C07A00",warningLight:"#FFF8E1",fixo:"#6B8FAF",fixoLight:"#EAF2FA",
-  verde:"#8BAF8A",verdeLight:"#EEF5EE",
   mostarda:"#E8A830",mostardaLight:"#FEF6E0",
 };
 
@@ -25,7 +24,7 @@ const LOGO_AMARELO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAY
 const DEFAULT_CONFIG={
   valorHoraAvulsa:38,valorHoraFixa:33,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
   salas:[
-    {id:"sala1",label:"Sala 1",cor:"#B5590A",corLight:"#FDEFD8"},
+    {id:"sala1",label:"Sala 1",cor:"#4A7C4E",corLight:"#EEF5EE"},
     {id:"sala2",label:"Sala 2",cor:"#4A7C4E",corLight:"#E8F5E9"},
   ],
   periodos:{
@@ -330,7 +329,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       valor:valor||0,
       userId:userProfile.uid,
       userName:userProfile.displayName||userProfile.nome||userProfile.email||"",
-      userColor:userProfile.color||"#B5590A",
+      userColor:userProfile.color||"#4A7C4E",
       notes:notes||"",pago:false,
       modalidade:modalidade||"presencial",
       recorrencia:recorrencia||"unica",
@@ -630,157 +629,95 @@ function ModalCancelamento({reserva,onClose,onConfirm}){
 }
 
 function AgendaView({reservas,setReservas,userProfile,config,isManager}){
-  const[semOff,setSemOff]=useState(0);
+  const[diaSel,setDiaSel]=useState(today());
+  const[mesNav,setMesNav]=useState(new Date().getMonth());
+  const[anoNav,setAnoNav]=useState(new Date().getFullYear());
   const[modalAberto,setModalAberto]=useState(false);
   const[editando,setEditando]=useState(null);
   const[excluindo,setExcluindo]=useState(null);
   const[cancelando,setCancelando]=useState(null);
   const[acoes,setAcoes]=useState(null);
   const[slotPre,setSlotPre]=useState(null);
-  const[viewMode,setViewMode]=useState("semana");
-  const[filtroDt,setFiltroDt]=useState("");
   const salas=config.salas||[];
-  const[dataSelecionada,setDataSelecionada]=useState(today());
-  const semanaBase=(()=>{
-    const base=new Date(dataSelecionada+"T12:00:00");
-    base.setDate(base.getDate()-base.getDay()+1);
-    const d=new Date(base);
-    d.setDate(d.getDate()+semOff*7);
-    return d.toISOString().slice(0,10);
-  })();
 
-  const minhasReservas=isManager?reservas:reservas.filter(r=>r.userId===userProfile.uid);
-  const lista=minhasReservas.filter(r=>!filtroDt||r.date===filtroDt).sort((a,b)=>(a.date+a.horaInicio).localeCompare(b.date+b.horaInicio));
+  // Calendário
+  const diasNoMes=(m,a)=>new Date(a,m+1,0).getDate();
+  const primeiroDia=(m,a)=>new Date(a,m,1).getDay();
+  const navMes=(dir)=>{
+    if(dir===-1&&mesNav===0){setMesNav(11);setAnoNav(a=>a-1);}
+    else if(dir===1&&mesNav===11){setMesNav(0);setAnoNav(a=>a+1);}
+    else setMesNav(m=>m+dir);
+  };
+
+  const diasReservados=new Set(reservas.map(r=>r.date));
+  const totalDias=diasNoMes(mesNav,anoNav);
+  const offset=primeiroDia(mesNav,anoNav);
+  const diasLabel=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+  // Agendamentos do dia selecionado
+  const agendamentosDia=reservas
+    .filter(r=>r.date===diaSel)
+    .sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
 
   const abrirNovo=(date,hora,salaId)=>{
     const hNum=hora!=null?Math.floor(Number(hora)):9;
     const hh=String(hNum).padStart(2,"0")+":00";
     const hf=String(Math.min(hNum+1,21)).padStart(2,"0")+":00";
-    setSlotPre({date:date||today(),horaInicio:hh,horaFim:hf,sala:salaId||salas[0]?.id});
+    setSlotPre({date:date||diaSel,horaInicio:hh,horaFim:hf,sala:salaId||salas[0]?.id});
     setEditando(null);setModalAberto(true);
   };
+
   const abrirEditar=(r)=>{
-    if(!r) return;
+    if(!r)return;
     const isOwn=r.userId===userProfile.uid;
-    if(isManager||isOwn){
-      setAcoes(r);
-    }
-    // se não é dono e não é gestor: não abre nada
+    if(isManager||isOwn) setAcoes(r);
   };
+
   const salvarReservas=async(geradas,isEdit)=>{
     if(isEdit){
-      // verifica permissão
-      if(!isManager&&editando.userId!==userProfile.uid){
-        alert("Você não tem permissão para editar esta reserva.");return;
-      }
-      // verifica se pode editar (prazo de 24h) - só para profissional
-      if(!isManager&&!podeEditar(editando)){
-        alert("Esta reserva está dentro do prazo de multa e não pode ser editada.");return;
-      }
-      // verifica conflito
+      if(!isManager&&editando.userId!==userProfile.uid){alert("Sem permissão.");return;}
+      if(!isManager&&!podeEditar(editando)){alert("Prazo de edição vencido.");return;}
       const nova={date:geradas[0].date,sala:geradas[0].sala,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim};
-      if(conflito(reservas,nova,[editando.id])){
-        alert("Já existe uma reserva nessa sala nesse horário.");return;
-      }
-      // salva histórico de edição com todas as mudanças
+      if(conflito(reservas,nova,[editando.id])){alert("Conflito de horário.");return;}
       try{
-        const mudancas=[];
-        if(editando.date!==geradas[0].date) mudancas.push("data");
-        if(editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim) mudancas.push("horario");
-        if(editando.sala!==geradas[0].sala) mudancas.push("sala");
-        if(editando.modalidade!==geradas[0].modalidade) mudancas.push("modalidade");
-        const recAntes=editando.recorrencia||"unica";
-        const recDepois=geradas[0].recorrencia||"unica";
-        if(recAntes!==recDepois) mudancas.push("recorrencia");
-        const hDocEdit={
-          tipo:"edicao",
-          reservaId:String(editando.id||""),
-          userId:String(userProfile.uid||""),
-          userName:String(userProfile.nome||userProfile.email||""),
-          mudancas:mudancas.join(","),
-          antesDate:String(editando.date||""),
-          antesInicio:String(editando.horaInicio||""),
-          antesFim:String(editando.horaFim||""),
-          antesSala:String(editando.sala||""),
-          antesModalidade:String(editando.modalidade||"presencial"),
-          antesRecorrencia:String(editando.recorrencia||"unica"),
-          depoisDate:String(geradas[0].date||""),
-          depoisInicio:String(geradas[0].horaInicio||""),
-          depoisFim:String(geradas[0].horaFim||""),
-          depoisSala:String(geradas[0].sala||""),
-          depoisModalidade:String(geradas[0].modalidade||"presencial"),
-          depoisRecorrencia:String(geradas[0].recorrencia||"unica"),
-          editadoEm:new Date().toISOString()
-        };
+        const hDocEdit={tipo:"edicao",reservaId:String(editando.id||""),userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),mudancas:[editando.date!==geradas[0].date?"data":"",editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim?"horario":"",editando.sala!==geradas[0].sala?"sala":"",editando.modalidade!==geradas[0].modalidade?"modalidade":"",(editando.recorrencia||"unica")!==(geradas[0].recorrencia||"unica")?"recorrencia":""].filter(Boolean).join(","),antesDate:String(editando.date||""),antesInicio:String(editando.horaInicio||""),antesFim:String(editando.horaFim||""),antesSala:String(editando.sala||""),antesModalidade:String(editando.modalidade||"presencial"),antesRecorrencia:String(editando.recorrencia||"unica"),depoisDate:String(geradas[0].date||""),depoisInicio:String(geradas[0].horaInicio||""),depoisFim:String(geradas[0].horaFim||""),depoisSala:String(geradas[0].sala||""),depoisModalidade:String(geradas[0].modalidade||"presencial"),depoisRecorrencia:String(geradas[0].recorrencia||"unica"),editadoEm:new Date().toISOString()};
         await setDoc(doc(db,"historico",uid()),hDocEdit);
-      }catch(errH){
-        console.error("Erro ao registrar histórico de edição:",errH);
-      }
-      // Atualiza a reserva atual
+      }catch(e){console.error(e);}
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
-      // Se tornou recorrente, cria as próximas
       if(geradas[0].recorrencia&&geradas[0].recorrencia!=="unica"){
-        const serieId=uid();
-        const dataFim=addMonths(geradas[0].date,6);
-        let dataAtual=addDays(geradas[0].date,
-          geradas[0].recorrencia==="semanal"?7:
-          geradas[0].recorrencia==="quinzenal"?14:30
-        );
+        const serieId=uid();const dataFim=addMonths(geradas[0].date,6);
+        let dataAtual=addDays(geradas[0].date,geradas[0].recorrencia==="semanal"?7:14);
         while(dataAtual<=dataFim){
-          const novaRes=cleanObj({...geradas[0],id:uid(),date:dataAtual,serieId,serieInicio:geradas[0].date,serieFim:dataFim,recorrencia:geradas[0].recorrencia});
+          const novaRes=cleanObj({...geradas[0],id:uid(),date:dataAtual,serieId,serieInicio:geradas[0].date,serieFim:dataFim});
           if(!conflito(reservas,{date:dataAtual,sala:novaRes.sala,horaInicio:novaRes.horaInicio,horaFim:novaRes.horaFim},[])){
             await setDoc(doc(db,"reservas",novaRes.id),novaRes);
             setReservas(prev=>[...prev,novaRes]);
           }
-          dataAtual=geradas[0].recorrencia==="semanal"?addDays(dataAtual,7):
-                    geradas[0].recorrencia==="quinzenal"?addDays(dataAtual,14):
-                    addMonths(dataAtual,1);
+          dataAtual=geradas[0].recorrencia==="semanal"?addDays(dataAtual,7):addDays(dataAtual,14);
         }
       }
     } else {
-      // verifica conflito para cada reserva gerada
       for(const g of geradas){
         if(g.modo!=="mensal"){
-          const nova={date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim};
-          if(conflito(reservas,nova,[])){
-            alert(`Conflito detectado em ${fmt(g.date)} ${g.horaInicio}–${g.horaFim} na ${g.sala}. Reserva não criada para este horário.`);
-            continue;
+          if(conflito(reservas,{date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim},[])){
+            alert(`Conflito em ${fmt(g.date)} ${g.horaInicio}–${g.horaFim}. Horário não criado.`);continue;
           }
         }
         await setDoc(doc(db,"reservas",g.id),cleanObj(g));
         setReservas(prev=>[...prev,g]);
       }
-      // Registra criação no histórico
       try{
-        const hId=uid();
-        const hDoc={
-          tipo:"criacao",
-          userId:String(userProfile.uid||""),
-          userName:String(userProfile.nome||userProfile.email||""),
-          date:String(geradas[0].date||""),
-          horaInicio:String(geradas[0].horaInicio||""),
-          horaFim:String(geradas[0].horaFim||""),
-          sala:String(geradas[0].sala||""),
-          modo:String(geradas[0].modo||"avulsa"),
-          recorrencia:String(geradas[0].recorrencia||"unica"),
-          recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",
-          totalGeradas:Number(geradas.length||1),
-          criadoEm:new Date().toISOString()
-        };
-        await setDoc(doc(db,"historico",hId),hDoc);
-      }catch(errH){
-        console.error("Erro ao registrar histórico de criação:",errH);
-      }
+        await setDoc(doc(db,"historico",uid()),{tipo:"criacao",userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),date:String(geradas[0].date||""),horaInicio:String(geradas[0].horaInicio||""),horaFim:String(geradas[0].horaFim||""),sala:String(geradas[0].sala||""),modo:String(geradas[0].modo||"avulsa"),recorrencia:String(geradas[0].recorrencia||"unica"),recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",totalGeradas:Number(geradas.length||1),criadoEm:new Date().toISOString()});
+      }catch(e){console.error(e);}
     }
   };
+
   const confirmarExcluir=async(opcao)=>{
-    const r=excluindo;
-    let ids=[];
+    const r=excluindo;let ids=[];
     if(opcao==="somente")ids=[r.id];
     else if(opcao==="proximos")ids=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date).map(x=>x.id);
-    else if(opcao==="todos")ids=reservas.filter(x=>x.serieId===r.serieId).map(x=>x.id);
-    else ids=[r.id];
+    else ids=reservas.filter(x=>x.serieId===r.serieId).map(x=>x.id);
     for(const id of ids)await deleteDoc(doc(db,"reservas",id));
     setReservas(prev=>prev.filter(x=>!ids.includes(x.id)));
     setExcluindo(null);
@@ -788,40 +725,13 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 
   const confirmarCancelamento=async(multa,escopo="somente")=>{
     const r=cancelando;
-    // Define quais reservas cancelar
     let paraCancel=[r];
-    if(escopo==="proximos"&&r.serieId){
-      paraCancel=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date);
-    }
-    // Cancela cada reserva
+    if(escopo==="proximos"&&r.serieId) paraCancel=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date);
     for(const res of paraCancel){
       const multaRes=escopo==="proximos"?calcMulta(res).multa:multa;
-      // Salva histórico
-      await setDoc(doc(db,"historico",uid()),cleanObj({
-        tipo:"cancelamento",reservaId:res.id,
-        userId:res.userId,userName:res.userName,
-        sala:res.sala,date:res.date,
-        horaInicio:res.horaInicio,horaFim:res.horaFim,
-        valor:res.valor||0,multa:multaRes||0,
-        canceladoEm:new Date().toISOString(),
-        escopo:escopo
-      }));
-      // Remove da agenda
+      await setDoc(doc(db,"historico",uid()),cleanObj({tipo:"cancelamento",reservaId:res.id,userId:res.userId,userName:res.userName,sala:res.sala,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,valor:res.valor||0,multa:multaRes||0,canceladoEm:new Date().toISOString(),escopo}));
       await deleteDoc(doc(db,"reservas",res.id));
-      // Lança multa se houver
-      if(multaRes>0){
-        await setDoc(doc(db,"lancamentos",uid()),cleanObj({
-          userId:res.userId,userName:res.userName,
-          tipo:"multa_cancelamento",valor:multaRes,pago:false,
-          date:res.date,
-          horaInicio:res.horaInicio,
-          horaFim:res.horaFim,
-          sala:res.sala,
-          modoOriginal:res.modo,
-          descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,
-          criadoEm:new Date().toISOString()
-        }));
-      }
+      if(multaRes>0) await setDoc(doc(db,"lancamentos",uid()),cleanObj({userId:res.userId,userName:res.userName,tipo:"multa_cancelamento",valor:multaRes,pago:false,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,sala:res.sala,modoOriginal:res.modo,descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,criadoEm:new Date().toISOString()}));
     }
     setReservas(prev=>prev.filter(x=>!paraCancel.find(r=>r.id===x.id)));
     setCancelando(null);
@@ -829,85 +739,147 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 
   const togglePago=async(id)=>{
     const r=reservas.find(x=>x.id===id);if(!r)return;
-    const updated={...r,pago:!r.pago};
-    await setDoc(doc(db,"reservas",id),updated);
-    setReservas(prev=>prev.map(x=>x.id===id?updated:x));
+    const u={...r,pago:!r.pago};
+    await setDoc(doc(db,"reservas",id),u);
+    setReservas(prev=>prev.map(x=>x.id===id?u:x));
   };
 
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
-  const recLabel={unica:"",semanal:"↻ Semanal",quinzenal:"↻ Quinzenal",mensal_rec:"↻ Mensal"};
+  const recLabel={unica:"",semanal:"↻ Semanal",quinzenal:"↻ Quinzenal"};
+  const diasSemana=["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+  const diaSemLabel=diasSemana[new Date(diaSel+"T12:00:00").getDay()];
+
+  // Grade do dia: linhas = horas, colunas = salas
+  const hStart=horaParaMin(config.horaInicio||"08:00");
+  const hEnd=horaParaMin(config.horaFim||"21:00");
+  const horasGrade=[];
+  for(let h=Math.ceil(hStart/60);h<Math.floor(hEnd/60);h++) horasGrade.push(h);
+
+  const getReservaSlot=(h,salaId)=>reservas.find(r=>r.date===diaSel&&r.sala===salaId&&horaParaMin(r.horaInicio)<=h*60&&horaParaMin(r.horaFim)>h*60);
 
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
         <h2 style={{margin:0,color:C.text,fontSize:22,fontWeight:800}}>Agenda de Salas</h2>
-        <div style={{display:"flex",gap:8}}>
-          <Btn variant={viewMode==="semana"?"primary":"secondary"} small onClick={()=>setViewMode("semana")}>Grade</Btn>
-          <Btn variant={viewMode==="lista"?"primary":"secondary"} small onClick={()=>setViewMode("lista")}>Lista</Btn>
-          <Btn onClick={()=>abrirNovo()}>+ Reservar Sala</Btn>
-        </div>
+        <Btn onClick={()=>abrirNovo()}>+ Reservar Sala</Btn>
       </div>
-      <AlertasVencimento reservas={isManager?reservas:reservas.filter(r=>r.userId===userProfile.uid)}/>
-      {viewMode==="semana"&&(
-        <Card style={{marginBottom:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
-            <Btn variant="secondary" small onClick={()=>setSemOff(o=>o-1)}>← Anterior</Btn>
-            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{fontWeight:700,color:C.text,fontSize:14}}>Semana de {fmt(semanaBase)}</span>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <label style={{fontSize:12,color:C.muted,fontWeight:500}}>Ir para:</label>
-                <input type="date" value={dataSelecionada} onChange={e=>{setDataSelecionada(e.target.value);setSemOff(0);}}
-                  style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"4px 8px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}/>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <Btn variant="secondary" small onClick={()=>{setSemOff(0);setDataSelecionada(today());}}>Hoje</Btn>
-              <Btn variant="secondary" small onClick={()=>setSemOff(o=>o+1)}>Próxima →</Btn>
-            </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:20,marginBottom:20}}>
+        {/* Calendário */}
+        <Card style={{padding:16}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <button onClick={()=>navMes(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:C.accent,fontWeight:700}}>‹</button>
+            <span style={{fontWeight:700,color:C.text,fontSize:14}}>{MONTH_FULL[mesNav]} {anoNav}</span>
+            <button onClick={()=>navMes(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:C.accent,fontWeight:700}}>›</button>
           </div>
-          <GradeSemanal reservas={reservas} semanaBase={semanaBase} onSlotClick={abrirNovo} onBlockClick={abrirEditar} config={config}/>
-          <div style={{display:"flex",gap:12,marginTop:12,flexWrap:"wrap"}}>
-            {salas.map(s=>(<div key={s.id} style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:s.cor}}/><span style={{fontSize:12,color:C.textMid}}>{s.label}</span></div>))}
-            <div style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:C.surfaceAlt,border:`1px solid ${C.border}`}}/><span style={{fontSize:12,color:C.muted}}>Clique para reservar</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
+            {diasLabel.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:C.muted,fontWeight:600,padding:"2px 0"}}>{d}</div>)}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+            {Array.from({length:offset}).map((_,i)=><div key={"e"+i}/>)}
+            {Array.from({length:totalDias}).map((_,i)=>{
+              const d=i+1;
+              const dateStr=`${anoNav}-${String(mesNav+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+              const isHoje=dateStr===today();
+              const isSel=dateStr===diaSel;
+              const temRes=diasReservados.has(dateStr);
+              return(
+                <button key={d} onClick={()=>setDiaSel(dateStr)} style={{aspectRatio:"1",border:"none",borderRadius:"50%",cursor:"pointer",fontSize:12,fontWeight:isSel||isHoje?700:400,background:isSel?C.accent:isHoje?C.accentLight:"transparent",color:isSel?"#fff":isHoje?C.accent:C.text,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {d}
+                  {temRes&&!isSel&&<div style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:4,height:4,borderRadius:"50%",background:C.success}}/>}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{marginTop:12,display:"flex",gap:12,flexWrap:"wrap"}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:"50%",background:C.success}}/><span style={{fontSize:10,color:C.muted}}>Com reservas</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:16,height:16,borderRadius:"50%",background:C.accent}}/><span style={{fontSize:10,color:C.muted}}>Selecionado</span></div>
           </div>
         </Card>
-      )}
-      {viewMode==="lista"&&(
-        <Card style={{marginBottom:20}}>
-          <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-            <div style={{width:160}}><Field label="Filtrar por data" type="date" value={filtroDt} onChange={setFiltroDt}/></div>
-            {filtroDt&&<div style={{display:"flex",alignItems:"flex-end",paddingBottom:14}}><Btn variant="ghost" small onClick={()=>setFiltroDt("")}>Limpar</Btn></div>}
-          </div>
-          {lista.length===0&&<p style={{color:C.muted,margin:0}}>Nenhuma reserva encontrada.</p>}
-          {lista.map(r=>{
-            const isOwn=r.userId===userProfile.uid;
-            const cancelado=r.status==="cancelado";
-            return(
-              <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${C.border}`,opacity:cancelado?0.6:1}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>{r.userName}</div>
-                  <div style={{fontSize:12,color:C.textMid}}>{fmt(r.date)} · {r.horaInicio}–{r.horaFim} {r.modalidade==="online"?"💻":""}</div>
-                  {cancelado&&r.multa>0&&<div style={{fontSize:11,color:C.danger,fontWeight:600}}>Multa: {fmtR(r.multa)}</div>}
+
+        {/* Agendamentos do dia */}
+        <Card style={{padding:16}}>
+          <h3 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>
+            📅 Agendamentos do dia {String(new Date(diaSel+"T12:00:00").getDate()).padStart(2,"0")}/{String(new Date(diaSel+"T12:00:00").getMonth()+1).padStart(2,"0")}/{new Date(diaSel+"T12:00:00").getFullYear()} ({diaSemLabel})
+          </h3>
+          {agendamentosDia.length===0?(
+            <div style={{textAlign:"center",padding:"24px 0",color:C.muted}}>
+              <div style={{fontSize:32,marginBottom:8}}>📭</div>
+              <div style={{fontSize:14}}>Nenhum agendamento neste dia</div>
+              <div style={{marginTop:12}}><Btn small onClick={()=>abrirNovo(diaSel)}>+ Reservar</Btn></div>
+            </div>
+          ):(
+            agendamentosDia.map(r=>{
+              const sala=salas.find(s=>s.id===r.sala);
+              const isOwn=r.userId===userProfile.uid;
+              return(
+                <div key={r.id} onClick={()=>abrirEditar(r)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,marginBottom:8,background:C.surfaceAlt,border:`1px solid ${sala?.cor||C.border}33`,cursor:"pointer",transition:"all 0.1s"}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.muted,minWidth:40}}>{r.horaInicio}</div>
+                  <div style={{width:3,alignSelf:"stretch",background:sala?.cor||C.accent,borderRadius:2,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>{sala?.label||r.sala}</div>
+                    <div style={{fontSize:12,color:C.textMid}}>{r.userName}</div>
+                    <div style={{fontSize:11,color:C.muted}}>{r.horaInicio}–{r.horaFim} · {modoLabel[r.modo]||r.modo}{r.recorrencia&&r.recorrencia!=="unica"?" · "+recLabel[r.recorrencia]:""}</div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</div>
+                    <Badge label={r.pago?"✓ Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
-                  <SalaTag salaId={r.sala} salas={salas}/>
-                  <Badge label={modoLabel[r.modo]||r.modo} bg={C.accentLight} color={C.accent}/>
-                  {r.recorrencia&&r.recorrencia!=="unica"&&<Badge label={recLabel[r.recorrencia]||"↻"} bg={C.fixoLight} color={C.fixo}/>}
-                  {cancelado
-                    ? <Badge label="Cancelado" bg={C.dangerLight} color={C.danger}/>
-                    : <Badge label={r.pago?"Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
-                  }
-                  <span style={{fontSize:14,fontWeight:700,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</span>
-                  {isManager&&!cancelado&&<Btn variant="success" small onClick={()=>togglePago(r.id)}>{r.pago?"✓ Pago":"Marcar Pago"}</Btn>}
-                  {(isManager||isOwn)&&!cancelado&&<Btn variant="secondary" small onClick={()=>setAcoes(r)}>Ver opções</Btn>}
-                  {isManager&&<Btn variant="danger" small onClick={()=>setExcluindo(r)}>✕</Btn>}
-                  {/* Profissional não pode excluir semanal */}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </Card>
-      )}
+      </div>
+
+      {/* Grade do dia por sala */}
+      <Card>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:400}}>
+            <thead>
+              <tr>
+                <th style={{width:52,borderBottom:`2px solid ${C.border}`,padding:"8px 6px",color:C.muted,fontSize:11}}>Hora</th>
+                {salas.map(s=>(
+                  <th key={s.id} style={{borderBottom:`2px solid ${C.border}`,padding:"8px 6px",textAlign:"center",fontWeight:700,color:s.cor,background:s.corLight,fontSize:13}}>
+                    {s.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {horasGrade.map(h=>(
+                <tr key={h}>
+                  <td style={{padding:"2px 6px",color:C.muted,fontSize:11,textAlign:"right",verticalAlign:"top",paddingTop:4,borderRight:`1px solid ${C.border}`}}>
+                    {String(h).padStart(2,"0")}:00
+                  </td>
+                  {salas.map(sala=>{
+                    const r=getReservaSlot(h,sala.id);
+                    const isFirst=r&&horaParaMin(r.horaInicio)===h*60;
+                    const corPro=r?.userColor||sala.cor;
+                    return(
+                      <td key={sala.id+h}
+                        onClick={r?()=>abrirEditar(r):()=>abrirNovo(diaSel,h,sala.id)}
+                        style={{border:`1px solid ${C.border}`,padding:0,verticalAlign:"top",height:32,background:r?corPro:C.surfaceAlt,cursor:"pointer",opacity:r?.status==="cancelado"?0.4:1}}
+                        title={r?`${r.userName} · ${r.horaInicio}–${r.horaFim}`:"Clique para reservar"}>
+                        {isFirst&&(
+                          <div style={{background:"rgba(0,0,0,0.15)",color:"#fff",padding:"2px 4px",fontSize:9,fontWeight:700,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
+                            {r.userName?.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{display:"flex",gap:12,marginTop:10,flexWrap:"wrap"}}>
+          {salas.map(s=>(<div key={s.id} style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:s.cor}}/><span style={{fontSize:12,color:C.textMid}}>{s.label}</span></div>))}
+          <div style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:C.surfaceAlt,border:`1px solid ${C.border}`}}/><span style={{fontSize:12,color:C.muted}}>Disponível</span></div>
+        </div>
+      </Card>
+
       {modalAberto&&editando&&<ModalReserva onClose={()=>{setModalAberto(false);setEditando(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={editando} inicial={null}/>}
       {modalAberto&&!editando&&<ModalReserva onClose={()=>{setModalAberto(false);setSlotPre(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={null} inicial={slotPre}/>}
       {excluindo&&<ModalExcluir reserva={excluindo} onClose={()=>setExcluindo(null)} onConfirm={confirmarExcluir}/>}
@@ -921,6 +893,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     </div>
   );
 }
+
 
 function PendenciasView({userProfile,config}){
   const salas=config.salas||[];
@@ -1250,7 +1223,7 @@ function ProfissionaisView(){
   const[loading,setLoading]=useState(true);
   const[modal,setModal]=useState(false);
   const[editando,setEditando]=useState(null);
-  const[form,setForm]=useState({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});
+  const[form,setForm]=useState({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});
   const[erro,setErro]=useState("");
   const[saving,setSaving]=useState(false);
 
@@ -1262,8 +1235,8 @@ function ProfissionaisView(){
     return unsub;
   },[]);
 
-  const abrirNovo=()=>{setEditando(null);setForm({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});setErro("");setModal(true);};
-  const abrirEditar=(u)=>{setEditando(u);setForm({nome:u.nome||"",email:u.email||"",senha:"",role:u.role||"professional",color:u.color||"#B5590A"});setErro("");setModal(true);};
+  const abrirNovo=()=>{setEditando(null);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});setErro("");setModal(true);};
+  const abrirEditar=(u)=>{setEditando(u);setForm({nome:u.nome||"",email:u.email||"",senha:"",role:u.role||"professional",color:u.color||"#4A7C4E"});setErro("");setModal(true);};
 
   const salvar=async()=>{
     setErro("");setSaving(true);
@@ -1273,8 +1246,8 @@ function ProfissionaisView(){
         setModal(false);
       } else {
         const cred=await createUserWithEmailAndPassword(auth,form.email,form.senha);
-        await setDoc(doc(db,"users",cred.user.uid),{uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,color:form.color||"#B5590A",criadoEm:new Date().toISOString()});
-        setModal(false);setForm({nome:"",email:"",senha:"",role:"professional",color:"#B5590A"});
+        await setDoc(doc(db,"users",cred.user.uid),{uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,color:form.color||"#4A7C4E",criadoEm:new Date().toISOString()});
+        setModal(false);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});
       }
     }catch(e){
       if(e.code==="auth/email-already-in-use")setErro("Este e-mail já está cadastrado.");
@@ -1325,8 +1298,8 @@ function ProfissionaisView(){
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Cor na agenda</label>
             <div style={{display:"flex",gap:10,alignItems:"center"}}>
-              <input type="color" value={form.color||"#B5590A"} onChange={e=>setForm(f=>({...f,color:e.target.value}))} style={{width:44,height:36,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer"}}/>
-              <div style={{width:32,height:32,borderRadius:"50%",background:form.color||"#B5590A"}}/>
+              <input type="color" value={form.color||"#4A7C4E"} onChange={e=>setForm(f=>({...f,color:e.target.value}))} style={{width:44,height:36,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer"}}/>
+              <div style={{width:32,height:32,borderRadius:"50%",background:form.color||"#4A7C4E"}}/>
               <span style={{fontSize:13,color:C.textMid}}>Cor nos blocos da agenda</span>
             </div>
           </div>
@@ -1904,7 +1877,7 @@ export default function App(){
   return(
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif"}}>
       {/* Header mobile e desktop */}
-      <div style={{background:"#3D3228",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 8px #00000033"}}>
+      <div style={{background:"#2C3E2D",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 8px #00000033"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <img src={LOGO_AMARELO} alt="Casa Aquarela" style={{width:36,height:36,objectFit:"contain",borderRadius:8,background:"#fff"}}/>
           <span style={{fontWeight:800,color:"#fff",fontSize:15}}>{config.nomeClinica}</span>
