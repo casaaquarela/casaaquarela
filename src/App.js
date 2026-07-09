@@ -292,7 +292,7 @@ function ModalExcluir({reserva,onClose,onConfirm}){
   );
 }
 
-function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inicial}){
+function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inicial,users,isManager}){
   const base=editando||inicial||{};
   const isEdit=!!editando;
   const salas=config.salas||[];
@@ -307,6 +307,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   const[recorrencia,setRecorrencia]=useState(base.recorrencia||"unica");
   const[modalidade,setModalidade]=useState(base.modalidade||"presencial");
   const[notes,setNotes]=useState(base.notes||"");
+  const[profSel,setProfSel]=useState(base.userId||userProfile.uid);
   const[erro,setErro]=useState("");
 
   const hStart=horaParaMin(config.horaInicio||"08:00");
@@ -338,10 +339,10 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       modo:modo,
       periodo:modo==="periodo"?periodo:null,
       valor:valor||0,
-      userId:userProfile.uid,
-      userName:userProfile.displayName||userProfile.nome||userProfile.email||"",
-      userColor:userProfile.color||"#4A7C4E",
-      notes:notes||"",pago:false,
+      valor:valor||0,
+      userId:profSel||userProfile.uid,
+      userName:(users?.find(u=>u.uid===profSel)?.nome||userProfile.displayName||userProfile.nome||userProfile.email||""),
+      userColor:(users?.find(u=>u.uid===profSel)?.color||userProfile.color||"#4A7C4E"),
       modalidade:modalidade||"presencial",
       recorrencia:recorrencia||"unica",
       serieId:null,serieInicio:null,serieFim:null
@@ -419,6 +420,17 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(addMonths(data,6))}</span>}
         </div>
       </>
+      {isManager&&users&&users.length>0&&(
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Profissional</label>
+          <select value={profSel} onChange={e=>setProfSel(e.target.value)}
+            style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.accent}`,borderRadius:8,color:C.text,padding:"8px 11px",fontSize:14,fontFamily:"inherit",fontWeight:600}}>
+            {users.filter(u=>u.uid).map(u=>(
+              <option key={u.uid} value={u.uid}>{u.nome||u.email}{u.role==="manager"?" (gestor)":""}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <Field label="Observações" value={notes} onChange={setNotes} placeholder="Opcional..."/>
       {erro&&<div style={{background:C.dangerLight,color:C.danger,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,marginBottom:12}}>{erro}</div>}
       <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn variant="secondary" onClick={onClose}>Cancelar</Btn><Btn onClick={salvar}>Confirmar Reserva</Btn></div>
@@ -650,6 +662,13 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[acoes,setAcoes]=useState(null);
   const[slotPre,setSlotPre]=useState(null);
   const salas=config.salas||[];
+  const[users,setUsers]=useState([]);
+  useEffect(()=>{
+    const unsub=onSnapshot(collection(db,"users"),snap=>{
+      setUsers(snap.docs.map(d=>({id:d.id,...d.data()})));
+    });
+    return unsub;
+  },[]);
 
   const diasNoMes=(m,a)=>new Date(a,m+1,0).getDate();
   const primeiroDia=(m,a)=>new Date(a,m,1).getDay();
@@ -883,8 +902,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         </div>
       </Card>
 
-      {modalAberto&&editando&&<ModalReserva onClose={()=>{setModalAberto(false);setEditando(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={editando} inicial={null}/>}
-      {modalAberto&&!editando&&<ModalReserva onClose={()=>{setModalAberto(false);setSlotPre(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={null} inicial={slotPre}/>}
+      {modalAberto&&editando&&<ModalReserva onClose={()=>{setModalAberto(false);setEditando(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={editando} inicial={null} users={users} isManager={isManager}/>}
+      {modalAberto&&!editando&&<ModalReserva onClose={()=>{setModalAberto(false);setSlotPre(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={null} inicial={slotPre} users={users} isManager={isManager}/>}
       {excluindo&&<ModalExcluir reserva={excluindo} onClose={()=>setExcluindo(null)} onConfirm={confirmarExcluir}/>}
       {cancelando&&<ModalCancelamento reserva={cancelando} onClose={()=>setCancelando(null)} onConfirm={confirmarCancelamento}/>}
       {acoes&&<ModalAcoes reserva={acoes} salas={salas} isManager={isManager}
