@@ -339,7 +339,6 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       modo:modo,
       periodo:modo==="periodo"?periodo:null,
       valor:valor||0,
-      valor:valor||0,
       userId:profSel||userProfile.uid,
       userName:(users?.find(u=>u.uid===profSel)?.nome||userProfile.displayName||userProfile.nome||userProfile.email||""),
       userColor:(users?.find(u=>u.uid===profSel)?.color||userProfile.color||"#4A7C4E"),
