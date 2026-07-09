@@ -127,10 +127,10 @@ const Modal=({title,onClose,children,wide})=>(
   </div>
 );
 const Stat=({label,value,color=C.accent,sub})=>(
-  <Card style={{padding:"18px 20px"}}>
-    <div style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{label}</div>
-    <div style={{fontSize:26,fontWeight:800,color,marginBottom:sub?3:0}}>{value}</div>
-    {sub&&<div style={{fontSize:12,color:C.muted}}>{sub}</div>}
+  <Card style={{padding:"14px 16px"}}>
+    <div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4,lineHeight:1.2}}>{label}</div>
+    <div style={{fontSize:20,fontWeight:800,color,marginBottom:sub?2:0,lineHeight:1.2}}>{value}</div>
+    {sub&&<div style={{fontSize:11,color:C.muted}}>{sub}</div>}
   </Card>
 );
 const SalaTag=({salaId,salas})=>{const s=salas?.find(x=>x.id===salaId);if(!s)return null;return<Badge label={s.label} bg={s.corLight} color={s.cor}/>;};
@@ -1016,28 +1016,70 @@ function DashboardView({reservas,config}){
   const porSala=salas.map(s=>{const rs=mesRes.filter(r=>r.sala===s.id&&r.modo!=="mensal");return{...s,horas:rs.reduce((t,r)=>t+calcHoras(r.horaInicio,r.horaFim),0),reservas:rs.length};});
   return(
     <div>
-      <h2 style={{margin:"0 0 24px",color:C.text,fontSize:22,fontWeight:800}}>Dashboard — {MONTH_FULL[new Date().getMonth()]}</h2>
+      <h2 style={{margin:"0 0 16px",color:C.text,fontSize:20,fontWeight:800}}>Dashboard — {MONTH_FULL[new Date().getMonth()]}</h2>
       <AlertasVencimento reservas={reservas}/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:16,marginBottom:28}}>
+
+      {/* Stats - 2 colunas no mobile */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
         <Stat label="Reservas no mês" value={mesRes.length}/>
         <Stat label="Faturamento" value={fmtR(totalValor)} color={C.text}/>
         <Stat label="Recebido" value={fmtR(totalPago)} color={C.success}/>
         <Stat label="A receber" value={fmtR(totalValor-totalPago)} color={C.warning}/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:20}}>
+
+      {/* Hoje */}
+      <Card style={{marginBottom:12}}>
+        <h3 style={{margin:"0 0 12px",color:C.text,fontSize:14,fontWeight:700}}>Hoje — {fmt(today())}</h3>
+        {hojRes.length===0
+          ?<p style={{color:C.muted,fontSize:13,margin:0}}>Nenhum agendamento hoje.</p>
+          :hojRes.map(r=>(
+            <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{fontSize:12,color:C.textMid,fontWeight:600,minWidth:80}}>{r.horaInicio}–{r.horaFim}</div>
+              <div style={{flex:1,fontSize:13,color:C.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.userName?.split(" ").slice(0,2).join(" ")}</div>
+              <SalaTag salaId={r.sala} salas={salas}/>
+            </div>
+          ))
+        }
+      </Card>
+
+      {/* Ocupação */}
+      <Card style={{marginBottom:12}}>
+        <h3 style={{margin:"0 0 12px",color:C.text,fontSize:14,fontWeight:700}}>Ocupação das salas</h3>
+        {porSala.map(s=>(
+          <div key={s.id} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:13,fontWeight:600,color:s.cor}}>{s.label}</span>
+              <span style={{fontSize:12,color:C.textMid}}>{s.horas.toFixed(1)}h · {s.reservas} reservas</span>
+            </div>
+            <div style={{background:C.surfaceAlt,borderRadius:6,height:8}}>
+              <div style={{width:`${Math.min(s.horas/80*100,100)}%`,background:s.cor,borderRadius:6,height:8}}/>
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      {/* Por profissional */}
+      {byUser.length>0&&(
         <Card>
-          <h3 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>Hoje — {fmt(today())}</h3>
-          {hojRes.length===0?<p style={{color:C.muted,fontSize:14,margin:0}}>Nenhuma reserva hoje.</p>:hojRes.map(r=>(<div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}><div style={{fontSize:13,color:C.textMid,minWidth:90,fontWeight:600}}>{r.horaInicio}–{r.horaFim}</div><div style={{flex:1,fontSize:13,color:C.text,fontWeight:600}}>{r.userName?.split(" ").slice(0,2).join(" ")} {r.modalidade==="online"?"💻":""}</div><SalaTag salaId={r.sala} salas={salas}/></div>))}
+          <h3 style={{margin:"0 0 12px",color:C.text,fontSize:14,fontWeight:700}}>Por profissional</h3>
+          {byUser.map(pro=>(
+            <div key={pro.uid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pro.name.split(" ").slice(0,2).join(" ")}</div>
+                <div style={{fontSize:11,color:C.muted}}>{pro.reservas} reservas · {pro.horas.toFixed(1)}h</div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.text}}>{fmtR(pro.valor)}</div>
+                {pro.valor-pro.pago>0&&<div style={{fontSize:11,color:C.warning}}>{fmtR(pro.valor-pro.pago)} pend.</div>}
+              </div>
+            </div>
+          ))}
         </Card>
-        <Card>
-          <h3 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>Ocupação das salas</h3>
-          {porSala.map(s=>(<div key={s.id} style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600,color:s.cor}}>{s.label}</span><span style={{fontSize:12,color:C.textMid}}>{s.horas.toFixed(1)}h</span></div><div style={{background:C.surfaceAlt,borderRadius:6,height:8}}><div style={{width:`${Math.min(s.horas/80*100,100)}%`,background:s.cor,borderRadius:6,height:8}}/></div></div>))}
-        </Card>
-      </div>
-      {byUser.length>0&&<Card><h3 style={{margin:"0 0 16px",color:C.text,fontSize:15,fontWeight:700}}>Por profissional</h3>{byUser.map(pro=>(<div key={pro.uid} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{pro.name}</div><div style={{fontSize:11,color:C.muted}}>{pro.reservas} reservas · {pro.horas.toFixed(1)}h</div></div><div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{fmtR(pro.valor)}</div>{pro.valor-pro.pago>0&&<div style={{fontSize:11,color:C.warning}}>{fmtR(pro.valor-pro.pago)} pend.</div>}</div></div>))}</Card>}
+      )}
     </div>
   );
 }
+
 
 function CobrancasView({reservas,setReservas,config}){
   const salas=config.salas||[];
@@ -1900,7 +1942,7 @@ export default function App(){
       </div>
 
       {/* Conteúdo */}
-      <div style={{padding:"20px 16px",maxWidth:900,margin:"0 auto"}}>
+      <div style={{padding:"12px 12px",maxWidth:900,margin:"0 auto"}}>
         {view==="dashboard"&&isManager&&<DashboardView reservas={reservas} config={config}/>}
         {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} userProfile={userProfile} config={config} isManager={isManager}/>}
         {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} config={config}/>}
