@@ -73,6 +73,15 @@ const podeEditar=(reserva)=>{
   return diffHoras>=24;
 };
 
+const diaPermitido=(dateStr,horaInicio)=>{
+  const d=new Date(dateStr+"T12:00:00");
+  const diaSem=d.getDay(); // 0=dom, 6=sab
+  if(diaSem===0) return{ok:false,msg:"Domingos não há atendimento na Casa Aquarela."};
+  if(diaSem===6&&horaInicio&&horaParaMin(horaInicio)>=horaParaMin("16:00"))
+    return{ok:false,msg:"Aos sábados o atendimento encerra às 16h."};
+  return{ok:true};
+};
+
 const calcMulta=(reserva)=>{
   if(!reserva.date||!reserva.horaInicio)return{multa:0,pct:0,msg:"Sem cobrança",antecedencia:999};
   const agora=new Date();
@@ -321,6 +330,8 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
     if(!data)return setErro("Preencha a data.");
     if(!sala)return setErro("Selecione uma sala.");
     if(modo==="avulsa"&&horaParaMin(hFim)<=horaParaMin(hIni))return setErro("Horário de fim deve ser após o início.");
+    const permissao=diaPermitido(data,horaInicio||hIni);
+    if(!permissao.ok)return setErro(permissao.msg);
     const dadosBase={
       id:isEdit?editando.id:uid(),
       date:data,sala,horaInicio,horaFim,
@@ -640,7 +651,6 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[slotPre,setSlotPre]=useState(null);
   const salas=config.salas||[];
 
-  // Calendário
   const diasNoMes=(m,a)=>new Date(a,m+1,0).getDate();
   const primeiroDia=(m,a)=>new Date(a,m,1).getDay();
   const navMes=(dir)=>{
@@ -652,12 +662,9 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const diasReservados=new Set(reservas.map(r=>r.date));
   const totalDias=diasNoMes(mesNav,anoNav);
   const offset=primeiroDia(mesNav,anoNav);
-  const diasLabel=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const diasLabel=["D","S","T","Q","Q","S","S"];
 
-  // Agendamentos do dia selecionado
-  const agendamentosDia=reservas
-    .filter(r=>r.date===diaSel)
-    .sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
+  const agendamentosDia=reservas.filter(r=>r.date===diaSel).sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
 
   const abrirNovo=(date,hora,salaId)=>{
     const hNum=hora!=null?Math.floor(Number(hora)):9;
@@ -680,8 +687,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
       const nova={date:geradas[0].date,sala:geradas[0].sala,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim};
       if(conflito(reservas,nova,[editando.id])){alert("Conflito de horário.");return;}
       try{
-        const hDocEdit={tipo:"edicao",reservaId:String(editando.id||""),userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),mudancas:[editando.date!==geradas[0].date?"data":"",editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim?"horario":"",editando.sala!==geradas[0].sala?"sala":"",editando.modalidade!==geradas[0].modalidade?"modalidade":"",(editando.recorrencia||"unica")!==(geradas[0].recorrencia||"unica")?"recorrencia":""].filter(Boolean).join(","),antesDate:String(editando.date||""),antesInicio:String(editando.horaInicio||""),antesFim:String(editando.horaFim||""),antesSala:String(editando.sala||""),antesModalidade:String(editando.modalidade||"presencial"),antesRecorrencia:String(editando.recorrencia||"unica"),depoisDate:String(geradas[0].date||""),depoisInicio:String(geradas[0].horaInicio||""),depoisFim:String(geradas[0].horaFim||""),depoisSala:String(geradas[0].sala||""),depoisModalidade:String(geradas[0].modalidade||"presencial"),depoisRecorrencia:String(geradas[0].recorrencia||"unica"),editadoEm:new Date().toISOString()};
-        await setDoc(doc(db,"historico",uid()),hDocEdit);
+        const mudancas=[editando.date!==geradas[0].date?"data":"",editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim?"horario":"",editando.sala!==geradas[0].sala?"sala":"",editando.modalidade!==geradas[0].modalidade?"modalidade":"",(editando.recorrencia||"unica")!==(geradas[0].recorrencia||"unica")?"recorrencia":""].filter(Boolean).join(",");
+        await setDoc(doc(db,"historico",uid()),{tipo:"edicao",reservaId:String(editando.id||""),userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),mudancas,antesDate:String(editando.date||""),antesInicio:String(editando.horaInicio||""),antesFim:String(editando.horaFim||""),antesSala:String(editando.sala||""),antesModalidade:String(editando.modalidade||"presencial"),antesRecorrencia:String(editando.recorrencia||"unica"),depoisDate:String(geradas[0].date||""),depoisInicio:String(geradas[0].horaInicio||""),depoisFim:String(geradas[0].horaFim||""),depoisSala:String(geradas[0].sala||""),depoisModalidade:String(geradas[0].modalidade||"presencial"),depoisRecorrencia:String(geradas[0].recorrencia||"unica"),editadoEm:new Date().toISOString()});
       }catch(e){console.error(e);}
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
@@ -700,16 +707,16 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     } else {
       for(const g of geradas){
         if(g.modo!=="mensal"){
+          const permissao=diaPermitido(g.date,g.horaInicio);
+          if(!permissao.ok){alert(permissao.msg);continue;}
           if(conflito(reservas,{date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim},[])){
-            alert(`Conflito em ${fmt(g.date)} ${g.horaInicio}–${g.horaFim}. Horário não criado.`);continue;
+            alert(`Conflito em ${fmt(g.date)} ${g.horaInicio}. Horário não criado.`);continue;
           }
         }
         await setDoc(doc(db,"reservas",g.id),cleanObj(g));
         setReservas(prev=>[...prev,g]);
       }
-      try{
-        await setDoc(doc(db,"historico",uid()),{tipo:"criacao",userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),date:String(geradas[0].date||""),horaInicio:String(geradas[0].horaInicio||""),horaFim:String(geradas[0].horaFim||""),sala:String(geradas[0].sala||""),modo:String(geradas[0].modo||"avulsa"),recorrencia:String(geradas[0].recorrencia||"unica"),recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",totalGeradas:Number(geradas.length||1),criadoEm:new Date().toISOString()});
-      }catch(e){console.error(e);}
+      try{await setDoc(doc(db,"historico",uid()),{tipo:"criacao",userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),date:String(geradas[0].date||""),horaInicio:String(geradas[0].horaInicio||""),horaFim:String(geradas[0].horaFim||""),sala:String(geradas[0].sala||""),modo:String(geradas[0].modo||"avulsa"),recorrencia:String(geradas[0].recorrencia||"unica"),recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",totalGeradas:Number(geradas.length||1),criadoEm:new Date().toISOString()});}catch(e){console.error(e);}
     }
   };
 
@@ -737,110 +744,103 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     setCancelando(null);
   };
 
-  const togglePago=async(id)=>{
-    const r=reservas.find(x=>x.id===id);if(!r)return;
-    const u={...r,pago:!r.pago};
-    await setDoc(doc(db,"reservas",id),u);
-    setReservas(prev=>prev.map(x=>x.id===id?u:x));
+  // Grade por sala do dia selecionado
+  const hStart=Math.ceil(horaParaMin(config.horaInicio||"08:00")/60);
+  const hEnd=Math.floor(horaParaMin(config.horaFim||"21:00")/60);
+  const getDiaHEnd=(dateStr)=>{
+    const diaSem=new Date(dateStr+"T12:00:00").getDay();
+    if(diaSem===6) return Math.min(hEnd,16); // sábado até 16h
+    return hEnd;
   };
-
+  const horasGrade=Array.from({length:getDiaHEnd(diaSel)-hStart},(_,i)=>hStart+i);
+  const getSlot=(h,salaId)=>reservas.find(r=>r.date===diaSel&&r.sala===salaId&&horaParaMin(r.horaInicio)<=h*60&&horaParaMin(r.horaFim)>h*60);
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
-  const recLabel={unica:"",semanal:"↻ Semanal",quinzenal:"↻ Quinzenal"};
-  const diasSemana=["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
-  const diaSemLabel=diasSemana[new Date(diaSel+"T12:00:00").getDay()];
-
-  // Grade do dia: linhas = horas, colunas = salas
-  const hStart=horaParaMin(config.horaInicio||"08:00");
-  const hEnd=horaParaMin(config.horaFim||"21:00");
-  const horasGrade=[];
-  for(let h=Math.ceil(hStart/60);h<Math.floor(hEnd/60);h++) horasGrade.push(h);
-
-  const getReservaSlot=(h,salaId)=>reservas.find(r=>r.date===diaSel&&r.sala===salaId&&horaParaMin(r.horaInicio)<=h*60&&horaParaMin(r.horaFim)>h*60);
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
-        <h2 style={{margin:0,color:C.text,fontSize:22,fontWeight:800}}>Agenda de Salas</h2>
-        <Btn onClick={()=>abrirNovo()}>+ Reservar Sala</Btn>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{margin:0,color:C.text,fontSize:20,fontWeight:800}}>Agenda</h2>
+        <Btn small onClick={()=>abrirNovo()}>+ Reservar</Btn>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:20,marginBottom:20}}>
-        {/* Calendário */}
-        <Card style={{padding:16}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <button onClick={()=>navMes(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:C.accent,fontWeight:700}}>‹</button>
-            <span style={{fontWeight:700,color:C.text,fontSize:14}}>{MONTH_FULL[mesNav]} {anoNav}</span>
-            <button onClick={()=>navMes(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:C.accent,fontWeight:700}}>›</button>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
-            {diasLabel.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:C.muted,fontWeight:600,padding:"2px 0"}}>{d}</div>)}
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
-            {Array.from({length:offset}).map((_,i)=><div key={"e"+i}/>)}
-            {Array.from({length:totalDias}).map((_,i)=>{
-              const d=i+1;
-              const dateStr=`${anoNav}-${String(mesNav+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-              const isHoje=dateStr===today();
-              const isSel=dateStr===diaSel;
-              const temRes=diasReservados.has(dateStr);
-              return(
-                <button key={d} onClick={()=>setDiaSel(dateStr)} style={{aspectRatio:"1",border:"none",borderRadius:"50%",cursor:"pointer",fontSize:12,fontWeight:isSel||isHoje?700:400,background:isSel?C.accent:isHoje?C.accentLight:"transparent",color:isSel?"#fff":isHoje?C.accent:C.text,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {d}
-                  {temRes&&!isSel&&<div style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:4,height:4,borderRadius:"50%",background:C.success}}/>}
-                </button>
-              );
-            })}
-          </div>
-          <div style={{marginTop:12,display:"flex",gap:12,flexWrap:"wrap"}}>
-            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:"50%",background:C.success}}/><span style={{fontSize:10,color:C.muted}}>Com reservas</span></div>
-            <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:16,height:16,borderRadius:"50%",background:C.accent}}/><span style={{fontSize:10,color:C.muted}}>Selecionado</span></div>
-          </div>
-        </Card>
+      {/* Calendário compacto */}
+      <Card style={{padding:12,marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <button onClick={()=>navMes(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:C.accent,fontWeight:700,padding:"4px 8px"}}>‹</button>
+          <span style={{fontWeight:700,color:C.text,fontSize:14}}>{MONTH_FULL[mesNav]} {anoNav}</span>
+          <button onClick={()=>navMes(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:C.accent,fontWeight:700,padding:"4px 8px"}}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,marginBottom:4}}>
+          {diasLabel.map((d,i)=><div key={i} style={{textAlign:"center",fontSize:10,color:C.muted,fontWeight:600,padding:"2px 0"}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
+          {Array.from({length:offset}).map((_,i)=><div key={"e"+i}/>)}
+          {Array.from({length:totalDias}).map((_,i)=>{
+            const d=i+1;
+            const dateStr=`${anoNav}-${String(mesNav+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+            const isHoje=dateStr===today();
+            const isSel=dateStr===diaSel;
+            const temRes=diasReservados.has(dateStr);
+            return(
+              <button key={d} onClick={()=>setDiaSel(dateStr)}
+                style={{aspectRatio:"1",border:"none",borderRadius:"50%",cursor:"pointer",fontSize:12,fontWeight:isSel||isHoje?700:400,background:isSel?C.accent:isHoje?C.accentLight:"transparent",color:isSel?"#fff":isHoje?C.accent:C.text,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minWidth:0}}>
+                {d}
+                {temRes&&!isSel&&<div style={{position:"absolute",bottom:1,left:"50%",transform:"translateX(-50%)",width:3,height:3,borderRadius:"50%",background:C.success}}/>}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
 
-        {/* Agendamentos do dia */}
-        <Card style={{padding:16}}>
-          <h3 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>
-            📅 Agendamentos do dia {String(new Date(diaSel+"T12:00:00").getDate()).padStart(2,"0")}/{String(new Date(diaSel+"T12:00:00").getMonth()+1).padStart(2,"0")}/{new Date(diaSel+"T12:00:00").getFullYear()} ({diaSemLabel})
-          </h3>
-          {agendamentosDia.length===0?(
-            <div style={{textAlign:"center",padding:"24px 0",color:C.muted}}>
-              <div style={{fontSize:32,marginBottom:8}}>📭</div>
-              <div style={{fontSize:14}}>Nenhum agendamento neste dia</div>
-              <div style={{marginTop:12}}><Btn small onClick={()=>abrirNovo(diaSel)}>+ Reservar</Btn></div>
-            </div>
-          ):(
-            agendamentosDia.map(r=>{
-              const sala=salas.find(s=>s.id===r.sala);
-              const isOwn=r.userId===userProfile.uid;
-              return(
-                <div key={r.id} onClick={()=>abrirEditar(r)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,marginBottom:8,background:C.surfaceAlt,border:`1px solid ${sala?.cor||C.border}33`,cursor:"pointer",transition:"all 0.1s"}}>
-                  <div style={{fontWeight:700,fontSize:13,color:C.muted,minWidth:40}}>{r.horaInicio}</div>
-                  <div style={{width:3,alignSelf:"stretch",background:sala?.cor||C.accent,borderRadius:2,flexShrink:0}}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>{sala?.label||r.sala}</div>
-                    <div style={{fontSize:12,color:C.textMid}}>{r.userName}</div>
-                    <div style={{fontSize:11,color:C.muted}}>{r.horaInicio}–{r.horaFim} · {modoLabel[r.modo]||r.modo}{r.recorrencia&&r.recorrencia!=="unica"?" · "+recLabel[r.recorrencia]:""}</div>
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{r.valor?fmtR(r.valor):"A combinar"}</div>
-                    <Badge label={r.pago?"✓ Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
-                  </div>
+      {/* Título do dia */}
+      <div style={{marginBottom:10}}>
+        <div style={{fontWeight:700,color:C.text,fontSize:15,display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+          📅 {fmt(diaSel)}
+          {diaSel===today()&&<Badge label="Hoje" bg={C.accentLight} color={C.accent}/>}
+          {new Date(diaSel+"T12:00:00").getDay()===0&&<Badge label="Fechado" bg={C.dangerLight} color={C.danger}/>}
+          {new Date(diaSel+"T12:00:00").getDay()===6&&<Badge label="Sáb · até 16h" bg={C.warningLight} color={C.warning}/>}
+        </div>
+        {new Date(diaSel+"T12:00:00").getDay()===0&&(
+          <div style={{background:C.dangerLight,border:`1px solid ${C.danger}33`,borderRadius:8,padding:"8px 12px",fontSize:13,color:C.danger,fontWeight:600}}>
+            🚫 Domingos não há atendimento na Casa Aquarela.
+          </div>
+        )}
+      </div>
+
+      {/* GESTOR: lista de agendamentos do dia */}
+      {isManager&&agendamentosDia.length>0&&(
+        <Card style={{marginBottom:12,padding:12}}>
+          <div style={{fontWeight:700,color:C.text,fontSize:13,marginBottom:8}}>Agendamentos ({agendamentosDia.length})</div>
+          {agendamentosDia.map(r=>{
+            const sala=salas.find(s=>s.id===r.sala);
+            return(
+              <div key={r.id} onClick={()=>abrirEditar(r)}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}>
+                <div style={{width:3,height:36,background:sala?.cor||C.accent,borderRadius:2,flexShrink:0}}/>
+                <div style={{fontWeight:700,fontSize:12,color:C.muted,minWidth:42}}>{r.horaInicio}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.userName?.split(" ").slice(0,2).join(" ")}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{sala?.label} · {r.horaInicio}–{r.horaFim}</div>
                 </div>
-              );
-            })
-          )}
+                <Badge label={r.pago?"✓ Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
+              </div>
+            );
+          })}
         </Card>
-      </div>
+      )}
+      {isManager&&agendamentosDia.length===0&&(
+        <div style={{textAlign:"center",padding:"12px 0",color:C.muted,fontSize:13,marginBottom:12}}>Nenhum agendamento neste dia</div>
+      )}
 
-      {/* Grade do dia por sala */}
-      <Card>
+      {/* Grade por sala - principal */}
+      <Card style={{padding:0,overflow:"hidden"}}>
         <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:400}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead>
               <tr>
-                <th style={{width:52,borderBottom:`2px solid ${C.border}`,padding:"8px 6px",color:C.muted,fontSize:11}}>Hora</th>
+                <th style={{width:44,padding:"8px 4px",borderBottom:`2px solid ${C.border}`,color:C.muted,fontSize:10,fontWeight:600}}>Hora</th>
                 {salas.map(s=>(
-                  <th key={s.id} style={{borderBottom:`2px solid ${C.border}`,padding:"8px 6px",textAlign:"center",fontWeight:700,color:s.cor,background:s.corLight,fontSize:13}}>
+                  <th key={s.id} style={{padding:"8px 4px",borderBottom:`2px solid ${C.border}`,textAlign:"center",fontWeight:700,color:s.cor,background:s.corLight,fontSize:12}}>
                     {s.label}
                   </th>
                 ))}
@@ -848,22 +848,24 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
             </thead>
             <tbody>
               {horasGrade.map(h=>(
-                <tr key={h}>
-                  <td style={{padding:"2px 6px",color:C.muted,fontSize:11,textAlign:"right",verticalAlign:"top",paddingTop:4,borderRight:`1px solid ${C.border}`}}>
+                <tr key={h} style={{height:44}}>
+                  <td style={{padding:"2px 4px",color:C.muted,fontSize:10,textAlign:"right",verticalAlign:"middle",borderRight:`1px solid ${C.border}`,background:C.white}}>
                     {String(h).padStart(2,"0")}:00
                   </td>
                   {salas.map(sala=>{
-                    const r=getReservaSlot(h,sala.id);
+                    const r=getSlot(h,sala.id);
                     const isFirst=r&&horaParaMin(r.horaInicio)===h*60;
                     const corPro=r?.userColor||sala.cor;
+                    const isOwn=r?.userId===userProfile.uid;
+                    const bloqueado=!diaPermitido(diaSel,String(h).padStart(2,"0")+":00").ok;
                     return(
                       <td key={sala.id+h}
-                        onClick={r?()=>abrirEditar(r):()=>abrirNovo(diaSel,h,sala.id)}
-                        style={{border:`1px solid ${C.border}`,padding:0,verticalAlign:"top",height:32,background:r?corPro:C.surfaceAlt,cursor:"pointer",opacity:r?.status==="cancelado"?0.4:1}}
-                        title={r?`${r.userName} · ${r.horaInicio}–${r.horaFim}`:"Clique para reservar"}>
+                        onClick={r?(isManager||isOwn?()=>abrirEditar(r):undefined):(!bloqueado?()=>abrirNovo(diaSel,h,sala.id):undefined)}
+                        style={{border:`1px solid ${r?corPro+"55":C.border}`,padding:0,verticalAlign:"top",background:r?corPro+"22":bloqueado?"#f0f0f0":C.white,cursor:r?(isManager||isOwn?"pointer":"default"):(bloqueado?"not-allowed":"pointer"),position:"relative",opacity:bloqueado?0.5:1}}>
+                        {r&&<div style={{position:"absolute",top:0,left:0,bottom:0,width:4,background:corPro}}/>}
                         {isFirst&&(
-                          <div style={{background:"rgba(0,0,0,0.15)",color:"#fff",padding:"2px 4px",fontSize:9,fontWeight:700,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
-                            {r.userName?.split(" ").slice(0,2).join(" ")}{r.modalidade==="online"?" 💻":""}
+                          <div style={{paddingLeft:8,paddingTop:3,fontSize:9,fontWeight:700,color:corPro,lineHeight:1.3,overflow:"hidden"}}>
+                            {r.userName?.split(" ")[0]}
                           </div>
                         )}
                       </td>
@@ -874,9 +876,10 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
             </tbody>
           </table>
         </div>
-        <div style={{display:"flex",gap:12,marginTop:10,flexWrap:"wrap"}}>
-          {salas.map(s=>(<div key={s.id} style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:s.cor}}/><span style={{fontSize:12,color:C.textMid}}>{s.label}</span></div>))}
-          <div style={{display:"flex",gap:6,alignItems:"center"}}><div style={{width:12,height:12,borderRadius:3,background:C.surfaceAlt,border:`1px solid ${C.border}`}}/><span style={{fontSize:12,color:C.muted}}>Disponível</span></div>
+        {/* Legenda */}
+        <div style={{display:"flex",gap:12,padding:"8px 12px",flexWrap:"wrap",borderTop:`1px solid ${C.border}`}}>
+          {salas.map(s=>(<div key={s.id} style={{display:"flex",gap:4,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:2,background:s.cor}}/><span style={{fontSize:10,color:C.textMid}}>{s.label}</span></div>))}
+          <div style={{display:"flex",gap:4,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:2,background:C.border}}/><span style={{fontSize:10,color:C.muted}}>Livre — toque para reservar</span></div>
         </div>
       </Card>
 
