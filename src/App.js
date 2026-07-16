@@ -22,7 +22,7 @@ const LOGO_VERDE = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEB
 const LOGO_AMARELO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAA8ADwDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD6pooooAKKKjnnit0DTSLGpIALHHNJtJXY0m9ESUUUUxBRRRQAUUUUAV765S1gLOwBOQvIGTjPeuK1e6e/upWSRpIIhlN3GF7mug8TwNO9iApKiQ7sEA9M8Z4zwaxSsYupVgDb/KYRNswJOMjg9D+leBmc51JultFW+en9fgepg4xhHn6l/QNTngQw3it9nQD96f8AlnnoD7V1AORkdK4eCVIoHt5J4XAzIySAlXf0JHJx+VdlZArZwBhhhGoI98V1ZZWlKPs272/qxhjIJS5krXJqKKK9U4gqG8uEtLaSeQMVQZwoyT6AVNUF/b/a7SWHfsLDhsZ2nqDj60AUb6+024hnt7uQAIQsqkHKMduOR3y6/nWLFBbWWoSxPqAKwNtZZIzlSyEjB+n4dqkvNKh8y4S5vrkSSP5sjJbt8x+U4BAPy/KvHPTrTL21tJpnu47m4dLmX96DE3Ax/Dx/u/ka56uFpVZKc1qjWFacE4xejGWNrpdncq15fLI6fMECEDgMcn1/1bflXUR31vJMkKSAyuGIUgg/LgN+W4fnXLSaXZsUaS8uWeSMjJtWI5RlJxjj/WN+ftW1Y6YPtkN8LlmUB9iCPYMPycg89QMfSnQw9PDx5aasKpVnVd5s2KKKK3MwooooAKKKKACiiigAooooA//Z";
 
 const DEFAULT_CONFIG={
-  valorHoraAvulsa:38,valorHoraFixa:33,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
+  valorHoraAvulsa:38,valorHoraFixa:33,valorParceria:50,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
   salas:[
     {id:"sala1",label:"Sala 1",cor:"#4A7C4E",corLight:"#EEF5EE"},
     {id:"sala2",label:"Sala 2",cor:"#4A7C4E",corLight:"#E8F5E9"},
@@ -320,7 +320,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   if(modo==="avulsa"){
     horaInicio=hIni;horaFim=hFim;
     const h=calcHoras(hIni,hFim);
-    const taxaHora=recorrencia==="semanal"?(config.valorHoraFixa||33):(config.valorHoraAvulsa||38);
+    const taxaHora=recorrencia==="semanal"?(config.valorHoraFixa||33):recorrencia==="parceria"?(config.valorParceria||50):(config.valorHoraAvulsa||38);
     valor=+(h*taxaHora).toFixed(2);
     resumoValor=fmtR(valor)+(recorrencia==="semanal"?" (tarifa hora fixa)":"");
   }
@@ -355,7 +355,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
     onClose();
   };
 
-  const tarifaAvulsa=recorrencia==="semanal"?fmtR(config.valorHoraFixa||33)+"/h (fixa)":fmtR(config.valorHoraAvulsa||38)+"/h";
+  const tarifaAvulsa=recorrencia==="semanal"?fmtR(config.valorHoraFixa||33)+"/h (fixa)":recorrencia==="parceria"?fmtR(config.valorParceria||50)+"/h (parceria)":fmtR(config.valorHoraAvulsa||38)+"/h";
   const modoBtn=(m,label,sub)=>(<button onClick={()=>setModo(m)} style={{flex:1,padding:"10px 8px",border:`2px solid ${modo===m?C.accent:C.border}`,borderRadius:10,background:modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{m==="avulsa"?tarifaAvulsa:sub}</div></button>);
 
   return(
@@ -400,14 +400,23 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>
             Recorrência <span style={{color:C.danger}}>*</span>
           </label>
-          <div style={{display:"flex",gap:8}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {[
               {value:"unica",label:"Avulsa"},
               {value:"semanal",label:"Semanal"},
               {value:"quinzenal",label:"Quinzenal"},
+              {value:"parceria",label:"Parceria"},
             ].map(op=>(
-              <button key={op.value} onClick={()=>setRecorrencia(op.value)}
-                style={{flex:1,padding:"10px 8px",border:`2px solid ${recorrencia===op.value?C.accent:C.border}`,borderRadius:10,background:recorrencia===op.value?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:13,color:recorrencia===op.value?C.accent:C.textMid,transition:"all 0.12s"}}>
+              <button key={op.value} onClick={()=>{
+                if(op.value==="parceria"){
+                  if(window.confirm("Você confirma que se enquadra no tipo de sublocação por Parceria?\n\nEste tipo é exclusivo para profissionais com acordo especial com a Casa Aquarela.")){
+                    setRecorrencia(op.value);
+                  }
+                } else {
+                  setRecorrencia(op.value);
+                }
+              }}
+                style={{flex:"1 1 80px",padding:"10px 8px",border:`2px solid ${recorrencia===op.value?(op.value==="parceria"?C.fixo:C.accent):C.border}`,borderRadius:10,background:recorrencia===op.value?(op.value==="parceria"?C.fixoLight:C.accentLight):C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:13,color:recorrencia===op.value?(op.value==="parceria"?C.fixo:C.accent):C.textMid,transition:"all 0.12s"}}>
                 {op.label}
               </button>
             ))}
@@ -557,10 +566,10 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,isManager,sal
 
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {/* Cancelar - bloqueado para semanal */}
-              {reserva.recorrencia==="semanal"?(
+              {(reserva.recorrencia==="semanal"||reserva.recorrencia==="parceria")?(
                 <div style={{background:C.warningLight,border:`1px solid ${C.warning}44`,borderRadius:10,padding:"12px 14px"}}>
-                  <div style={{fontWeight:700,color:C.warning,marginBottom:4,fontSize:14}}>🔒 Reserva fixa — não pode ser cancelada</div>
-                  <div style={{fontSize:13,color:C.textMid}}>Reservas semanais funcionam como pacote de garantia mensal. O pagamento é obrigatório independente do uso. Somente a edição do horário é permitida (com mais de 24h de antecedência).</div>
+                  <div style={{fontWeight:700,color:C.warning,marginBottom:4,fontSize:14}}>🔒 {reserva.recorrencia==="parceria"?"Reserva de Parceria":"Reserva fixa"} — não pode ser cancelada</div>
+                  <div style={{fontSize:13,color:C.textMid}}>{reserva.recorrencia==="parceria"?"Reservas de Parceria possuem acordo especial e não podem ser canceladas unilateralmente.":"Reservas semanais funcionam como pacote de garantia mensal. O pagamento é obrigatório independente do uso."} Somente a edição do horário é permitida (com mais de 24h de antecedência).</div>
                 </div>
               ):(
                 <Btn variant="danger" full onClick={onCancelar}>
@@ -1173,7 +1182,22 @@ function CobrancasView({reservas,setReservas,config}){
   const opcoesProf=[{value:"",label:"Todos os profissionais"},...Object.entries(todosIds).map(([id,name])=>({value:id,label:name}))];
 
   // Componente de linha padrao
-  const LinhaItem=({data,sala,tipo,horario,valor,pago,onToggle,isMulta,dispensada,justificativa})=>(
+  const[modalDesconto,setModalDesconto]=useState(null);
+  const[descForm,setDescForm]=useState({tipo:"pct",valor:"",justificativa:""});
+
+  const aplicarDesconto=async()=>{
+    const r=modalDesconto;
+    const valorOrig=Number(r.valor||0);
+    let novoValor=valorOrig;
+    if(descForm.tipo==="pct") novoValor=+(valorOrig*(1-Number(descForm.valor)/100)).toFixed(2);
+    else novoValor=Math.max(0,+(valorOrig-Number(descForm.valor)).toFixed(2));
+    const u=cleanObj({...r,valor:novoValor,valorOriginal:valorOrig,desconto:descForm.valor,tipoDesconto:descForm.tipo,justificativaDesconto:descForm.justificativa});
+    await setDoc(doc(db,"reservas",r.id),u);
+    setReservas(prev=>prev.map(x=>x.id===r.id?u:x));
+    setModalDesconto(null);setDescForm({tipo:"pct",valor:"",justificativa:""});
+  };
+
+  const LinhaItem=({data,sala,tipo,horario,valor,pago,onToggle,isMulta,dispensada,justificativa,onDesconto,valorOriginal})=>(
     <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 0",borderTop:`1px solid ${C.border}`,flexWrap:"wrap"}}>
       <div style={{fontSize:13,color:C.textMid,minWidth:86,flexShrink:0}}>{data}</div>
       {sala&&<SalaTag salaId={sala} salas={salas}/>}
@@ -1181,9 +1205,19 @@ function CobrancasView({reservas,setReservas,config}){
       {horario&&<span style={{fontSize:12,color:C.textMid}}>{horario}</span>}
       {justificativa&&<span style={{fontSize:11,color:C.muted,fontStyle:"italic",flex:1}}>📝 {justificativa}</span>}
       <span style={{flex:1}}/>
-      <span style={{fontSize:14,fontWeight:700,color:isMulta&&!dispensada?C.danger:C.text,flexShrink:0}}>
-        {dispensada?"Dispensada":fmtR(valor)}
-      </span>
+      <div style={{textAlign:"right",flexShrink:0}}>
+        <div style={{fontSize:14,fontWeight:700,color:isMulta&&!dispensada?C.danger:C.text}}>
+          {dispensada?"Dispensada":fmtR(valor)}
+        </div>
+        {valorOriginal&&valorOriginal!==valor&&(
+          <div style={{fontSize:11,color:C.muted,textDecoration:"line-through"}}>{fmtR(valorOriginal)}</div>
+        )}
+      </div>
+      {!isMulta&&onDesconto&&!dispensada&&(
+        <button onClick={onDesconto} style={{background:C.mostardaLight,color:C.mostarda,border:`1px solid ${C.mostarda}44`,borderRadius:6,padding:"4px 8px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+          % Desc.
+        </button>
+      )}
       {dispensada
         ?<Badge label="Dispensada" bg={C.successLight} color={C.success}/>
         :<button onClick={onToggle} style={{background:pago?C.successLight:isMulta?C.dangerLight:C.warningLight,color:pago?C.success:isMulta?C.danger:C.warning,border:`1px solid ${pago?C.success:isMulta?C.danger:C.warning}44`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
@@ -1248,11 +1282,39 @@ function CobrancasView({reservas,setReservas,config}){
               tipo={modoLabel[r.modo]||r.modo}
               horario={r.horaInicio&&r.horaFim?`${r.horaInicio}–${r.horaFim}`:""}
               valor={r.valor||0}
+              valorOriginal={r.valorOriginal}
               pago={r.pago}
               onToggle={()=>togglePago(r.id)}
+              onDesconto={()=>{setModalDesconto(r);setDescForm({tipo:"pct",valor:"",justificativa:"Desconto especial"});}}
               isMulta={false}
             />
           ))}
+          {modalDesconto&&modalDesconto.userId===pro.userId&&(
+            <div style={{background:C.mostardaLight,border:`1px solid ${C.mostarda}44`,borderRadius:10,padding:14,marginTop:8}}>
+              <div style={{fontWeight:700,color:C.mostarda,marginBottom:10,fontSize:13}}>% Aplicar desconto — {modalDesconto.userName}</div>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                {[["pct","Percentual (%)"],["fixo","Valor fixo (R$)"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setDescForm(f=>({...f,tipo:v}))}
+                    style={{flex:1,padding:"7px",border:`2px solid ${descForm.tipo===v?C.mostarda:C.border}`,borderRadius:8,background:descForm.tipo===v?C.mostardaLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,color:descForm.tipo===v?C.mostarda:C.textMid}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <input type="number" placeholder={descForm.tipo==="pct"?"Ex: 10 (%)":"Ex: 5 (R$)"} value={descForm.valor} onChange={e=>setDescForm(f=>({...f,valor:e.target.value}))}
+                  style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit"}}/>
+                <input type="text" placeholder="Justificativa" value={descForm.justificativa} onChange={e=>setDescForm(f=>({...f,justificativa:e.target.value}))}
+                  style={{flex:2,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit"}}/>
+              </div>
+              {descForm.valor&&<div style={{fontSize:12,color:C.textMid,marginBottom:8}}>
+                Valor original: {fmtR(modalDesconto.valor)} → Novo valor: {fmtR(descForm.tipo==="pct"?modalDesconto.valor*(1-Number(descForm.valor)/100):Math.max(0,modalDesconto.valor-Number(descForm.valor)))}
+              </div>}
+              <div style={{display:"flex",gap:8}}>
+                <Btn variant="secondary" small onClick={()=>setModalDesconto(null)}>Cancelar</Btn>
+                <Btn small onClick={aplicarDesconto} style={{background:C.mostarda,color:"#fff",border:"none"}}>Aplicar desconto</Btn>
+              </div>
+            </div>
+          )}
         </>)}
 
         {/* Multas */}
@@ -1424,6 +1486,7 @@ function ConfigView({config,setConfig}){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
           <Field label="Hora avulsa (R$/h)" type="number" value={form.valorHoraAvulsa} onChange={v=>setForm(f=>({...f,valorHoraAvulsa:Number(v)}))} helper={`Tarifa para reservas avulsa e quinzenal`}/>
           <Field label="Hora fixa semanal (R$/h)" type="number" value={form.valorHoraFixa||33} onChange={v=>setForm(f=>({...f,valorHoraFixa:Number(v)}))} helper={`Tarifa para pacotes semanais`}/>
+          <Field label="Parceria (R$/h)" type="number" value={form.valorParceria||50} onChange={v=>setForm(f=>({...f,valorParceria:Number(v)}))} helper={`Tarifa especial para profissionais parceiros`}/>
           <div>
             <div style={{fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Mensalidade</div>
             <div style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",fontSize:14,color:C.muted,fontStyle:"italic"}}>A combinar com gestores</div>
