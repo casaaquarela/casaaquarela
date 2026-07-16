@@ -522,7 +522,92 @@ function AlertasVencimento({reservas}){
 
 
 
-function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,isManager,salas}){
+
+function ModalDesconto({reserva,reservas,onClose,onConfirm,isManager}){
+  const[escopo,setEscopo]=useState("somente");
+  const[tipo,setTipo]=useState("pct");
+  const[valorDesc,setValorDesc]=useState("");
+  const[justificativa,setJustificativa]=useState("");
+
+  const temSerie=!!reserva.serieId;
+  const valorOrig=Number(reserva.valor||0);
+
+  const calcNovoValor=(v)=>{
+    const n=Number(v||0);
+    if(tipo==="pct") return+(valorOrig*(1-n/100)).toFixed(2);
+    return Math.max(0,+(valorOrig-n).toFixed(2));
+  };
+
+  const novoValor=calcNovoValor(valorDesc);
+  const economia=valorOrig-novoValor;
+
+  return(
+    <Modal title="Aplicar Desconto" onClose={onClose}>
+      <div style={{background:C.surfaceAlt,borderRadius:10,padding:12,marginBottom:14}}>
+        <div style={{fontSize:13,color:C.textMid}}>{reserva.userName} · {fmt(reserva.date)} · {reserva.horaInicio}–{reserva.horaFim}</div>
+        <div style={{fontSize:15,fontWeight:700,color:C.text,marginTop:4}}>Valor atual: {fmtR(valorOrig)}</div>
+      </div>
+
+      {temSerie&&(
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Aplicar em:</label>
+          {[
+            ["somente","Somente esta reserva"],
+            ["proximos","Esta e todas as seguintes da série"],
+          ].map(([v,l])=>(
+            <label key={v} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",border:`1px solid ${escopo===v?C.accent:C.border}`,borderRadius:8,marginBottom:6,cursor:"pointer",background:escopo===v?C.accentLight:C.white}}>
+              <input type="radio" checked={escopo===v} onChange={()=>setEscopo(v)} style={{accentColor:C.accent}}/>
+              <span style={{fontSize:13,color:C.text}}>{l}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div style={{marginBottom:12}}>
+        <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Tipo de desconto</label>
+        <div style={{display:"flex",gap:8}}>
+          {[["pct","Percentual (%)"],["fixo","Valor fixo (R$)"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setTipo(v)}
+              style={{flex:1,padding:"9px",border:`2px solid ${tipo===v?C.accent:C.border}`,borderRadius:10,background:tipo===v?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:13,color:tipo===v?C.accent:C.textMid}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:8,marginBottom:12}}>
+        <div>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>{tipo==="pct"?"Desconto (%)":"Desconto (R$)"}</label>
+          <input type="number" value={valorDesc} onChange={e=>setValorDesc(e.target.value)} placeholder={tipo==="pct"?"Ex: 10":"Ex: 5,00"}
+            style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        </div>
+        <div>
+          <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Justificativa</label>
+          <input type="text" value={justificativa} onChange={e=>setJustificativa(e.target.value)} placeholder="Ex: Desconto fidelidade"
+            style={{width:"100%",background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 11px",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+
+      {valorDesc&&Number(valorDesc)>0&&(
+        <div style={{background:C.successLight,border:`1px solid ${C.success}44`,borderRadius:10,padding:12,marginBottom:14}}>
+          <div style={{fontSize:13,color:C.textMid}}>Valor original: <strong style={{textDecoration:"line-through"}}>{fmtR(valorOrig)}</strong></div>
+          <div style={{fontSize:15,fontWeight:800,color:C.success}}>Novo valor: {fmtR(novoValor)}</div>
+          <div style={{fontSize:12,color:C.success}}>Economia: {fmtR(economia)} {tipo==="pct"?`(${valorDesc}%)`:""}</div>
+          {escopo==="proximos"&&<div style={{fontSize:12,color:C.textMid,marginTop:4}}>⚠️ Será aplicado em todas as reservas seguintes desta série.</div>}
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+        <Btn onClick={()=>onConfirm({escopo,tipo,valorDesc,justificativa,novoValor})} disabled={!valorDesc||Number(valorDesc)<=0}>
+          Aplicar desconto
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
+function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,onDesconto,isManager,salas}){
   const valor=Number(reserva.valor||0);
   const{pct,msg}=calcMulta(reserva);
   const cancelado=reserva.status==="cancelado";
@@ -588,6 +673,12 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,isManager,sal
                 </div>
               )}
 
+              {/* Desconto - só gestor */}
+              {isManager&&(
+                <Btn variant="secondary" full onClick={onDesconto} style={{background:C.mostardaLight,color:C.mostarda,border:`1px solid ${C.mostarda}44`}}>
+                  % Aplicar desconto
+                </Btn>
+              )}
               {/* Excluir série - só gestor */}
               {isManager&&(
                 <Btn variant="warning" full onClick={onExcluir}>
@@ -668,6 +759,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[excluindo,setExcluindo]=useState(null);
   const[cancelando,setCancelando]=useState(null);
   const[acoes,setAcoes]=useState(null);
+  const[desconto,setDesconto]=useState(null);
   const[slotPre,setSlotPre]=useState(null);
   const salas=config.salas||[];
   const[users,setUsers]=useState([]);
@@ -692,6 +784,24 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const diasLabel=["D","S","T","Q","Q","S","S"];
 
   const agendamentosDia=reservas.filter(r=>r.date===diaSel).sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
+
+  const confirmarDesconto=async({escopo,tipo,valorDesc,justificativa,novoValor})=>{
+    const r=desconto;
+    let ids=[r.id];
+    if(escopo==="proximos"&&r.serieId){
+      ids=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date).map(x=>x.id);
+    }
+    for(const id of ids){
+      const res=reservas.find(x=>x.id===id);
+      if(!res)continue;
+      const valorOrigRes=res.valorOriginal||res.valor||0;
+      const novoValorRes=tipo==="pct"?+(valorOrigRes*(1-Number(valorDesc)/100)).toFixed(2):Math.max(0,+(valorOrigRes-Number(valorDesc)).toFixed(2));
+      const u=cleanObj({...res,valor:novoValorRes,valorOriginal:valorOrigRes,desconto:valorDesc,tipoDesconto:tipo,justificativaDesconto:justificativa});
+      await setDoc(doc(db,"reservas",id),u);
+      setReservas(prev=>prev.map(x=>x.id===id?u:x));
+    }
+    setDesconto(null);
+  };
 
   const abrirNovo=(date,hora,salaId)=>{
     const hNum=hora!=null?Math.floor(Number(hora)):9;
@@ -740,8 +850,12 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
             alert(`Conflito em ${fmt(g.date)} ${g.horaInicio}. Horário não criado.`);continue;
           }
         }
-        await setDoc(doc(db,"reservas",g.id),cleanObj(g));
-        setReservas(prev=>[...prev,g]);
+        // Aplica desconto padrão do profissional se existir
+        const profUser=users.find(u=>u.uid===g.userId);
+        const descPadrão=Number(profUser?.desconto||0);
+        const gComDesc=descPadrão>0?cleanObj({...g,valor:+(g.valor*(1-descPadrão/100)).toFixed(2),valorOriginal:g.valor,desconto:descPadrão,tipoDesconto:"pct",justificativaDesconto:`Desconto padrão ${descPadrão}%`}):cleanObj(g);
+        await setDoc(doc(db,"reservas",g.id),gComDesc);
+        setReservas(prev=>[...prev,gComDesc]);
       }
       try{await setDoc(doc(db,"historico",uid()),{tipo:"criacao",userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),date:String(geradas[0].date||""),horaInicio:String(geradas[0].horaInicio||""),horaFim:String(geradas[0].horaFim||""),sala:String(geradas[0].sala||""),modo:String(geradas[0].modo||"avulsa"),recorrencia:String(geradas[0].recorrencia||"unica"),recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",totalGeradas:Number(geradas.length||1),criadoEm:new Date().toISOString()});}catch(e){console.error(e);}
     }
@@ -919,7 +1033,9 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         onCancelar={()=>{setCancelando(acoes);setAcoes(null);}}
         onEditar={()=>{setEditando(acoes);setSlotPre(null);setModalAberto(true);setAcoes(null);}}
         onExcluir={()=>{setExcluindo(acoes);setAcoes(null);}}
+        onDesconto={()=>{setDesconto(acoes);setAcoes(null);}}
       />}
+      {desconto&&<ModalDesconto reserva={desconto} reservas={reservas} onClose={()=>setDesconto(null)} onConfirm={confirmarDesconto} isManager={isManager}/>}
     </div>
   );
 }
@@ -1371,7 +1487,7 @@ function ProfissionaisView(){
         setModal(false);
       } else {
         const cred=await createUserWithEmailAndPassword(auth,form.email,form.senha);
-        await setDoc(doc(db,"users",cred.user.uid),{uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,color:form.color||"#4A7C4E",criadoEm:new Date().toISOString()});
+        await setDoc(doc(db,"users",cred.user.uid),{uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,color:form.color||"#4A7C4E",desconto:form.desconto?Number(form.desconto):0,criadoEm:new Date().toISOString()});
         setModal(false);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});
       }
     }catch(e){
@@ -1420,6 +1536,7 @@ function ProfissionaisView(){
           {!editando&&<Field label="E-mail *" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} placeholder="nome@email.com"/>}
           {!editando&&<Field label="Senha inicial *" type="password" value={form.senha} onChange={v=>setForm(f=>({...f,senha:v}))} placeholder="Mínimo 6 caracteres" helper="O profissional usará esta senha para entrar"/>}
           <Field label="Tipo de acesso" value={form.role} onChange={v=>setForm(f=>({...f,role:v}))} options={[{value:"professional",label:"Profissional"},{value:"manager",label:"Gestor"}]}/>
+          <Field label="Desconto padrão (%)" type="number" value={form.desconto||""} onChange={v=>setForm(f=>({...f,desconto:v}))} placeholder="Ex: 10 (opcional)" helper="Aplicado automaticamente em todas as reservas deste profissional"/>
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Cor na agenda</label>
             <div style={{display:"flex",gap:10,alignItems:"center"}}>
