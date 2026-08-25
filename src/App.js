@@ -45,15 +45,16 @@ const conflito=(reservas,nova,excludeIds=[])=>reservas.some(r=>!excludeIds.inclu
 const addDays=(dateStr,days)=>{const d=new Date(dateStr+"T12:00:00");d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);};
 const addMonths=(dateStr,months)=>{const d=new Date(dateStr+"T12:00:00");d.setMonth(d.getMonth()+months);return d.toISOString().slice(0,10);};
 
-const gerarRecorrentes=(base,recorrencia)=>{
+const gerarRecorrentes=(base,recorrencia,dataFimCustom)=>{
   if(!recorrencia||recorrencia==="unica")return[base];
   const resultados=[];
   const serieId=uid();
   let dataAtual=base.date;
-  const dataFim=addMonths(base.date,6);
+  // Se não tem data fim, usa 2 anos (reserva contínua)
+  const dataFim=dataFimCustom||addMonths(base.date,24);
   let i=0;
-  while(dataAtual<=dataFim&&i<200){
-    resultados.push({...base,id:uid(),date:dataAtual,serieId,recorrencia,serieInicio:base.date,serieFim:dataFim});
+  while(dataAtual<=dataFim&&i<500){
+    resultados.push({...base,id:uid(),date:dataAtual,serieId,recorrencia,serieInicio:base.date,serieFim:dataFim,semFim:!dataFimCustom});
     if(recorrencia==="semanal"||recorrencia==="parceria")dataAtual=addDays(dataAtual,7);
     else if(recorrencia==="quinzenal")dataAtual=addDays(dataAtual,14);
     else if(recorrencia==="mensal_rec")dataAtual=addMonths(dataAtual,1);
@@ -269,7 +270,8 @@ function LoginScreen({onLogin}){
 
 function ModalExcluir({reserva,onClose,onConfirm}){
   const[opcao,setOpcao]=useState("somente");
-  const temSerie=!!(reserva.serieId&&reserva.serieId!=="null");
+  // Tem série se tem serieId OU se tem recorrência definida (reservas antigas sem serieId)
+  const temSerie=!!(reserva.serieId&&reserva.serieId!=="null")||(!!reserva.recorrencia&&reserva.recorrencia!=="unica");
   return(
     <Modal title="Excluir reserva" onClose={onClose}>
       {temSerie&&(
@@ -308,6 +310,9 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   const[modalidade,setModalidade]=useState(base.modalidade||"presencial");
   const[notes,setNotes]=useState(base.notes||"");
   const[profSel,setProfSel]=useState(base.userId||userProfile.uid);
+  const[tipoFim,setTipoFim]=useState("continua"); // continua | semanas | data
+  const[semanas,setSemanas]=useState("6");
+  const[dataFim,setDataFim]=useState("");
   const[erro,setErro]=useState("");
 
   const hStart=horaParaMin(config.horaInicio||"08:00");
@@ -350,7 +355,18 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       const nova={date:data,sala,horaInicio,horaFim};
       if(conflito(reservas,nova,[]))return setErro("Já existe uma reserva nessa sala nesse horário.");
     }
-    const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,recorrencia);
+    let dataFimCustom=null;
+    if(recorrencia!=="unica"){
+      if(tipoFim==="semanas"&&semanas){
+        const nSem=parseInt(semanas)||6;
+        const interval=recorrencia==="quinzenal"?14:7;
+        dataFimCustom=addDays(data,(nSem-1)*interval);
+      } else if(tipoFim==="data"&&dataFim){
+        dataFimCustom=dataFim;
+      }
+      // se "continua", dataFimCustom fica null e usa 24 meses
+    }
+    const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,recorrencia,dataFimCustom);
     onSave(geradas,isEdit);
     onClose();
   };
@@ -423,9 +439,39 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
           </div>
           {isEdit&&<div style={{fontSize:11,color:C.muted,marginTop:6}}>Ao salvar, cria novas reservas recorrentes a partir desta data.</div>}
         </div>
+        {/* Duração da série - só quando recorrente */}
+        {recorrencia!=="unica"&&(
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Duração</label>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+              {[["continua","Sem data fim"],["semanas","Nº de sessões"],["data","Data específica"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setTipoFim(v)}
+                  style={{padding:"7px 12px",border:`2px solid ${tipoFim===v?C.accent:C.border}`,borderRadius:8,background:tipoFim===v?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,color:tipoFim===v?C.accent:C.textMid}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {tipoFim==="semanas"&&(
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" value={semanas} onChange={e=>setSemanas(e.target.value)} min="1" max="104"
+                  style={{width:70,background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 10px",fontSize:14,fontFamily:"inherit"}}/>
+                <span style={{fontSize:13,color:C.textMid}}>sessões{semanas?` · até ${fmt(addDays(data,(parseInt(semanas)||1-1)*(recorrencia==="quinzenal"?14:7)))}`:""}</span>
+              </div>
+            )}
+            {tipoFim==="data"&&(
+              <input type="date" value={dataFim} onChange={e=>setDataFim(e.target.value)} min={data}
+                style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 10px",fontSize:14,fontFamily:"inherit"}}/>
+            )}
+            {tipoFim==="continua"&&(
+              <div style={{fontSize:12,color:C.muted}}>A reserva se repete indefinidamente até ser cancelada.</div>
+            )}
+          </div>
+        )}
         <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
           {resumoValor}
-          {recorrencia!=="unica"&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(addMonths(data,6))}</span>}
+          {recorrencia!=="unica"&&tipoFim==="continua"&&<span style={{color:C.muted,marginLeft:8,fontWeight:500,fontSize:12}}>· Sem data fim</span>}
+          {recorrencia!=="unica"&&tipoFim==="semanas"&&semanas&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· {semanas} sessões</span>}
+          {recorrencia!=="unica"&&tipoFim==="data"&&dataFim&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(dataFim)}</span>}
         </div>
       </>
       {isManager&&users&&users.length>0&&(
@@ -700,7 +746,7 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,onDesconto,is
 function ModalCancelamento({reserva,onClose,onConfirm}){
   const{multa,pct,msg}=calcMulta(reserva);
   const valor=Number(reserva.valor||0);
-  const temSerie=!!reserva.serieId;
+  const temSerie=!!(reserva.serieId)||(!!reserva.recorrencia&&reserva.recorrencia!=="unica");
   const[escopo,setEscopo]=useState("somente");
 
   return(
