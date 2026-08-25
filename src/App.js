@@ -54,7 +54,7 @@ const gerarRecorrentes=(base,recorrencia)=>{
   let i=0;
   while(dataAtual<=dataFim&&i<200){
     resultados.push({...base,id:uid(),date:dataAtual,serieId,recorrencia,serieInicio:base.date,serieFim:dataFim});
-    if(recorrencia==="semanal")dataAtual=addDays(dataAtual,7);
+    if(recorrencia==="semanal"||recorrencia==="parceria")dataAtual=addDays(dataAtual,7);
     else if(recorrencia==="quinzenal")dataAtual=addDays(dataAtual,14);
     else if(recorrencia==="mensal_rec")dataAtual=addMonths(dataAtual,1);
     else break;
@@ -269,7 +269,7 @@ function LoginScreen({onLogin}){
 
 function ModalExcluir({reserva,onClose,onConfirm}){
   const[opcao,setOpcao]=useState("somente");
-  const temSerie=!!reserva.serieId;
+  const temSerie=!!(reserva.serieId&&reserva.serieId!=="null");
   return(
     <Modal title="Excluir reserva" onClose={onClose}>
       {temSerie&&(
@@ -863,9 +863,35 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 
   const confirmarExcluir=async(opcao)=>{
     const r=excluindo;let ids=[];
-    if(opcao==="somente")ids=[r.id];
-    else if(opcao==="proximos")ids=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date).map(x=>x.id);
-    else ids=reservas.filter(x=>x.serieId===r.serieId).map(x=>x.id);
+    if(opcao==="somente"){
+      ids=[r.id];
+    } else if(opcao==="proximos"){
+      if(r.serieId){
+        // tem serieId - filtra pela série
+        ids=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date).map(x=>x.id);
+      } else {
+        // sem serieId - filtra por mesmo profissional + sala + horário + datas futuras
+        ids=reservas.filter(x=>
+          x.userId===r.userId&&
+          x.sala===r.sala&&
+          x.horaInicio===r.horaInicio&&
+          x.horaFim===r.horaFim&&
+          x.date>=r.date
+        ).map(x=>x.id);
+      }
+    } else {
+      // todos
+      if(r.serieId){
+        ids=reservas.filter(x=>x.serieId===r.serieId).map(x=>x.id);
+      } else {
+        ids=reservas.filter(x=>
+          x.userId===r.userId&&
+          x.sala===r.sala&&
+          x.horaInicio===r.horaInicio&&
+          x.horaFim===r.horaFim
+        ).map(x=>x.id);
+      }
+    }
     for(const id of ids)await deleteDoc(doc(db,"reservas",id));
     setReservas(prev=>prev.filter(x=>!ids.includes(x.id)));
     setExcluindo(null);
@@ -874,7 +900,17 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const confirmarCancelamento=async(multa,escopo="somente")=>{
     const r=cancelando;
     let paraCancel=[r];
-    if(escopo==="proximos"&&r.serieId) paraCancel=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date);
+    if(escopo==="proximos"){
+      if(r.serieId){
+        paraCancel=reservas.filter(x=>x.serieId===r.serieId&&x.date>=r.date);
+      } else {
+        paraCancel=reservas.filter(x=>
+          x.userId===r.userId&&x.sala===r.sala&&
+          x.horaInicio===r.horaInicio&&x.horaFim===r.horaFim&&
+          x.date>=r.date
+        );
+      }
+    }
     for(const res of paraCancel){
       const multaRes=escopo==="proximos"?calcMulta(res).multa:multa;
       await setDoc(doc(db,"historico",uid()),cleanObj({tipo:"cancelamento",reservaId:res.id,userId:res.userId,userName:res.userName,sala:res.sala,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,valor:res.valor||0,multa:multaRes||0,canceladoEm:new Date().toISOString(),escopo}));
