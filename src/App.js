@@ -85,6 +85,8 @@ const diaPermitido=(dateStr,horaInicio)=>{
 
 const calcMulta=(reserva)=>{
   if(!reserva.date||!reserva.horaInicio)return{multa:0,pct:0,msg:"Sem cobrança",antecedencia:999};
+  // Parceria: cancelamento sempre gratuito
+  if(reserva.recorrencia==="parceria")return{multa:0,pct:0,msg:"Reserva de parceria — cancelamento gratuito a qualquer momento.",antecedencia:999};
   const agora=new Date();
   const dataReserva=new Date(reserva.date+"T"+reserva.horaInicio+":00");
   const diffHoras=(dataReserva-agora)/(1000*60*60);
