@@ -697,10 +697,10 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,onDesconto,is
 
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {/* Cancelar - bloqueado para semanal */}
-              {(reserva.recorrencia==="semanal"||reserva.recorrencia==="parceria")?(
+              {reserva.recorrencia==="semanal"?(
                 <div style={{background:C.warningLight,border:`1px solid ${C.warning}44`,borderRadius:10,padding:"12px 14px"}}>
-                  <div style={{fontWeight:700,color:C.warning,marginBottom:4,fontSize:14}}>🔒 {reserva.recorrencia==="parceria"?"Reserva de Parceria":"Reserva fixa"} — não pode ser cancelada</div>
-                  <div style={{fontSize:13,color:C.textMid}}>{reserva.recorrencia==="parceria"?"Reservas de Parceria possuem acordo especial e não podem ser canceladas unilateralmente.":"Reservas semanais funcionam como pacote de garantia mensal. O pagamento é obrigatório independente do uso."} Somente a edição do horário é permitida (com mais de 24h de antecedência).</div>
+                  <div style={{fontWeight:700,color:C.warning,marginBottom:4,fontSize:14}}>🔒 Reserva fixa — não pode ser cancelada</div>
+                  <div style={{fontSize:13,color:C.textMid}}>Reservas semanais funcionam como pacote de garantia mensal. O pagamento é obrigatório independente do uso. Somente a edição do horário é permitida (com mais de 24h de antecedência).</div>
                 </div>
               ):(
                 <Btn variant="danger" full onClick={onCancelar}>
