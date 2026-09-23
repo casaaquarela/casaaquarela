@@ -890,21 +890,51 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         }
       }
     } else {
-      for(const g of geradas){
-        if(g.modo!=="mensal"){
-          const permissao=diaPermitido(g.date,g.horaInicio);
-          if(!permissao.ok){alert(permissao.msg);continue;}
-          if(conflito(reservas,{date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim},[])){
-            alert(`Conflito em ${fmt(g.date)} ${g.horaInicio}. Horário não criado.`);continue;
-          }
+      const ehSerie=recorrencia!=="unica";
+
+      if(ehSerie){
+        // Para séries: verifica TODOS os horários antes de criar qualquer um
+        // Se qualquer horário estiver ocupado, bloqueia tudo
+        const datasConflito=geradas.filter(g=>{
+          const perm=diaPermitido(g.date,g.horaInicio);
+          if(!perm.ok) return false; // dia bloqueado não conta como conflito
+          return conflito(reservas,{date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim},[]);
+        }).map(g=>fmt(g.date));
+
+        if(datasConflito.length>0){
+          setErro(
+            `Não é possível fazer esta reserva ${recorrencia==="semanal"?"semanal":recorrencia==="parceria"?"de parceria":"quinzenal"} pois o horário já está ocupado por outro profissional em ${datasConflito.length} data(s):
+${datasConflito.slice(0,3).join(", ")}${datasConflito.length>3?` e mais ${datasConflito.length-3}...`:""}
+
+Por favor, verifique a agenda ou faça uma reserva avulsa apenas nas datas disponíveis.`
+          );
+          return;
         }
-        // Aplica desconto padrão do profissional se existir
+      }
+
+      // Filtra dias bloqueados (domingo, sábado tarde)
+      const geradasValidas=geradas.filter(g=>{
+        const perm=diaPermitido(g.date,g.horaInicio);
+        if(!perm.ok) return false;
+        // Para avulsa, verifica conflito individual
+        if(!ehSerie&&conflito(reservas,{date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim},[])){
+          return false;
+        }
+        return true;
+      }).map(g=>{
         const profUser=users.find(u=>u.uid===g.userId);
         const descPadrão=Number(profUser?.desconto||0);
-        const gComDesc=descPadrão>0?cleanObj({...g,valor:+(g.valor*(1-descPadrão/100)).toFixed(2),valorOriginal:g.valor,desconto:descPadrão,tipoDesconto:"pct",justificativaDesconto:`Desconto padrão ${descPadrão}%`}):cleanObj(g);
-        await setDoc(doc(db,"reservas",g.id),gComDesc);
-        setReservas(prev=>[...prev,gComDesc]);
+        return descPadrão>0?cleanObj({...g,valor:+(g.valor*(1-descPadrão/100)).toFixed(2),valorOriginal:g.valor,desconto:descPadrão,tipoDesconto:"pct",justificativaDesconto:`Desconto padrão ${descPadrão}%`}):cleanObj(g);
+      });
+
+      if(geradasValidas.length===0){
+        setErro("Nenhum horário disponível para criar a reserva.");
+        return;
       }
+
+      // Salva todas em paralelo
+      await Promise.all(geradasValidas.map(g=>setDoc(doc(db,"reservas",g.id),g)));
+      setReservas(prev=>[...prev,...geradasValidas]);
       try{await setDoc(doc(db,"historico",uid()),{tipo:"criacao",userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),date:String(geradas[0].date||""),horaInicio:String(geradas[0].horaInicio||""),horaFim:String(geradas[0].horaFim||""),sala:String(geradas[0].sala||""),modo:String(geradas[0].modo||"avulsa"),recorrencia:String(geradas[0].recorrencia||"unica"),recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",totalGeradas:Number(geradas.length||1),criadoEm:new Date().toISOString()});}catch(e){console.error(e);}
     }
   };
@@ -940,7 +970,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         ).map(x=>x.id);
       }
     }
-    for(const id of ids)await deleteDoc(doc(db,"reservas",id));
+    // Apaga tudo em paralelo
+    await Promise.all(ids.map(id=>deleteDoc(doc(db,"reservas",id))));
     setReservas(prev=>prev.filter(x=>!ids.includes(x.id)));
     setExcluindo(null);
   };
@@ -959,12 +990,15 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         );
       }
     }
-    for(const res of paraCancel){
+    // Executa tudo em paralelo
+    await Promise.all(paraCancel.map(async res=>{
       const multaRes=escopo==="proximos"?calcMulta(res).multa:multa;
-      await setDoc(doc(db,"historico",uid()),cleanObj({tipo:"cancelamento",reservaId:res.id,userId:res.userId,userName:res.userName,sala:res.sala,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,valor:res.valor||0,multa:multaRes||0,canceladoEm:new Date().toISOString(),escopo}));
-      await deleteDoc(doc(db,"reservas",res.id));
-      if(multaRes>0) await setDoc(doc(db,"lancamentos",uid()),cleanObj({userId:res.userId,userName:res.userName,tipo:"multa_cancelamento",valor:multaRes,pago:false,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,sala:res.sala,modoOriginal:res.modo,descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,criadoEm:new Date().toISOString()}));
-    }
+      await Promise.all([
+        setDoc(doc(db,"historico",uid()),cleanObj({tipo:"cancelamento",reservaId:res.id,userId:res.userId,userName:res.userName,sala:res.sala,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,valor:res.valor||0,multa:multaRes||0,canceladoEm:new Date().toISOString(),escopo})),
+        deleteDoc(doc(db,"reservas",res.id)),
+        ...(multaRes>0?[setDoc(doc(db,"lancamentos",uid()),cleanObj({userId:res.userId,userName:res.userName,tipo:"multa_cancelamento",valor:multaRes,pago:false,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,sala:res.sala,modoOriginal:res.modo,descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,criadoEm:new Date().toISOString()}))]:[])
+      ]);
+    }));
     setReservas(prev=>prev.filter(x=>!paraCancel.find(r=>r.id===x.id)));
     setCancelando(null);
   };
