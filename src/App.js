@@ -890,33 +890,28 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         }
       }
     } else {
-      const ehSerie=recorrencia!=="unica";
+      const recorrenciaGerada=geradas[0]?.recorrencia||"unica";
+      const ehSerie=recorrenciaGerada!=="unica";
 
       if(ehSerie){
         // Para séries: verifica TODOS os horários antes de criar qualquer um
-        // Se qualquer horário estiver ocupado, bloqueia tudo
         const datasConflito=geradas.filter(g=>{
           const perm=diaPermitido(g.date,g.horaInicio);
-          if(!perm.ok) return false; // dia bloqueado não conta como conflito
+          if(!perm.ok) return false;
           return conflito(reservas,{date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim},[]);
         }).map(g=>fmt(g.date));
 
         if(datasConflito.length>0){
-          setErro(
-            `Não é possível fazer esta reserva ${recorrencia==="semanal"?"semanal":recorrencia==="parceria"?"de parceria":"quinzenal"} pois o horário já está ocupado por outro profissional em ${datasConflito.length} data(s):
-${datasConflito.slice(0,3).join(", ")}${datasConflito.length>3?` e mais ${datasConflito.length-3}...`:""}
-
-Por favor, verifique a agenda ou faça uma reserva avulsa apenas nas datas disponíveis.`
-          );
+          const tipoLabel=recorrenciaGerada==="semanal"?"semanal":recorrenciaGerada==="parceria"?"de parceria":"quinzenal";
+          alert(`Não é possível fazer esta reserva ${tipoLabel} pois o horário já está ocupado em ${datasConflito.length} data(s): ${datasConflito.slice(0,3).join(", ")}${datasConflito.length>3?` e mais ${datasConflito.length-3}...`:""}.\n\nVerifique a agenda ou use reserva avulsa nas datas disponíveis.`);
           return;
         }
       }
 
-      // Filtra dias bloqueados (domingo, sábado tarde)
+      // Filtra dias bloqueados
       const geradasValidas=geradas.filter(g=>{
         const perm=diaPermitido(g.date,g.horaInicio);
         if(!perm.ok) return false;
-        // Para avulsa, verifica conflito individual
         if(!ehSerie&&conflito(reservas,{date:g.date,sala:g.sala,horaInicio:g.horaInicio,horaFim:g.horaFim},[])){
           return false;
         }
@@ -928,7 +923,7 @@ Por favor, verifique a agenda ou faça uma reserva avulsa apenas nas datas dispo
       });
 
       if(geradasValidas.length===0){
-        setErro("Nenhum horário disponível para criar a reserva.");
+        alert("Nenhum horário disponível para criar a reserva.");
         return;
       }
 
