@@ -24,8 +24,9 @@ const LOGO_AMARELO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAY
 const DEFAULT_CONFIG={
   valorHoraAvulsa:38,valorHoraFixa:33,valorParceria:50,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
   salas:[
-    {id:"sala1",label:"Sala 1",cor:"#4A7C4E",corLight:"#EEF5EE"},
+    {id:"sala1",label:"Sala 1",cor:"#B5590A",corLight:"#FDEFD8"},
     {id:"sala2",label:"Sala 2",cor:"#4A7C4E",corLight:"#E8F5E9"},
+    {id:"sala3",label:"Sala 3",cor:"#6B8FAF",corLight:"#EAF2FA",bloqueada:true},
   ],
   periodos:{
     manha:{label:"Manhã",inicio:"08:00",fim:"13:00",valor:115},
@@ -55,7 +56,8 @@ const gerarRecorrentes=(base,recorrencia,dataFimCustom)=>{
   let i=0;
   while(dataAtual<=dataFim&&i<500){
     resultados.push({...base,id:uid(),date:dataAtual,serieId,recorrencia,serieInicio:base.date,serieFim:dataFim,semFim:!dataFimCustom});
-    if(recorrencia==="semanal"||recorrencia==="parceria")dataAtual=addDays(dataAtual,7);
+    if(recorrencia==="semanal")dataAtual=addDays(dataAtual,7);
+    else if(recorrencia==="parceria")dataAtual=addDays(dataAtual,7);
     else if(recorrencia==="quinzenal")dataAtual=addDays(dataAtual,14);
     else if(recorrencia==="mensal_rec")dataAtual=addMonths(dataAtual,1);
     else break;
@@ -381,7 +383,14 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       <div style={{marginBottom:14}}>
         <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Sala</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {salas.map(s=>(<button key={s.id} onClick={()=>setSala(s.id)} style={{flex:1,minWidth:80,padding:"10px",border:`2px solid ${sala===s.id?s.cor:C.border}`,borderRadius:10,background:sala===s.id?s.corLight:C.white,cursor:"pointer",fontFamily:"inherit",fontWeight:700,color:sala===s.id?s.cor:C.textMid,fontSize:14}}>{s.label}</button>))}
+          {salas.map(s=>(
+            <button key={s.id}
+              onClick={s.bloqueada?()=>alert("🚧 A Sala 3 está temporariamente bloqueada para novas reservas.\n\nAguarde novas orientações da gestão."):()=>setSala(s.id)}
+              style={{flex:1,minWidth:80,padding:"10px",border:`2px solid ${sala===s.id?s.cor:C.border}`,borderRadius:10,background:s.bloqueada?"#f0f0f0":sala===s.id?s.corLight:C.white,cursor:s.bloqueada?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,color:s.bloqueada?C.muted:sala===s.id?s.cor:C.textMid,fontSize:14,opacity:s.bloqueada?0.6:1,position:"relative"}}>
+              {s.label}
+              {s.bloqueada&&<div style={{fontSize:9,color:C.muted,fontWeight:500,marginTop:2}}>Em reforma</div>}
+            </button>
+          ))}
         </div>
       </div>
       <div style={{marginBottom:14}}>
@@ -1114,8 +1123,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
                     const bloqueado=!diaPermitido(diaSel,String(h).padStart(2,"0")+":00").ok;
                     return(
                       <td key={sala.id+h}
-                        onClick={r?(isManager||isOwn?()=>abrirEditar(r):undefined):(!bloqueado?()=>abrirNovo(diaSel,h,sala.id):undefined)}
-                        style={{border:`1px solid ${r?corPro+"55":C.border}`,padding:0,verticalAlign:"top",background:r?corPro+"22":bloqueado?"#f0f0f0":C.white,cursor:r?(isManager||isOwn?"pointer":"default"):(bloqueado?"not-allowed":"pointer"),position:"relative",opacity:bloqueado?0.5:1}}>
+                        onClick={r?(isManager||isOwn?()=>abrirEditar(r):undefined):(!bloqueado&&!sala.bloqueada?()=>abrirNovo(diaSel,h,sala.id):sala.bloqueada?()=>alert("🚧 A Sala 3 está temporariamente bloqueada para novas reservas.\n\nEsta sala encontra-se em processo de reforma e modificações. Por favor, aguarde novas orientações da gestão da Casa Aquarela."):undefined)}
+                        style={{border:`1px solid ${r?corPro+"55":C.border}`,padding:0,verticalAlign:"top",background:r?corPro+"22":bloqueado||sala.bloqueada?"#f0f0f0":C.white,cursor:r?(isManager||isOwn?"pointer":"default"):(bloqueado||sala.bloqueada?"not-allowed":"pointer"),position:"relative",opacity:bloqueado?0.5:sala.bloqueada?0.6:1}}>
                         {r&&<div style={{position:"absolute",top:0,left:0,bottom:0,width:4,background:corPro}}/>}
                         {isFirst&&(
                           <div style={{paddingLeft:8,paddingTop:3,fontSize:9,fontWeight:700,color:corPro,lineHeight:1.3,overflow:"hidden"}}>
@@ -1134,6 +1143,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         <div style={{display:"flex",gap:12,padding:"8px 12px",flexWrap:"wrap",borderTop:`1px solid ${C.border}`}}>
           {salas.map(s=>(<div key={s.id} style={{display:"flex",gap:4,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:2,background:s.cor}}/><span style={{fontSize:10,color:C.textMid}}>{s.label}</span></div>))}
           <div style={{display:"flex",gap:4,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:2,background:C.border}}/><span style={{fontSize:10,color:C.muted}}>Livre — toque para reservar</span></div>
+          {salas.some(s=>s.bloqueada)&&<div style={{display:"flex",gap:4,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:2,background:"#f0f0f0",border:"1px solid #ccc"}}/><span style={{fontSize:10,color:C.muted}}>🚧 Em reforma</span></div>}
         </div>
       </Card>
 
