@@ -2213,7 +2213,6 @@ export default function App(){
       setLoadingData(false);
     };
     loadConfig();
-    return()=>unsubR();
   },[authUser]);
 
   useEffect(()=>{
