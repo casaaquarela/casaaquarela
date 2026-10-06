@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-globals */
 import { useState, useEffect } from "react";
 import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, collection, onSnapshot, deleteDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
 const C = {
@@ -104,6 +104,13 @@ const vencimentoMes=(mesStr)=>{
   const proximoMes=mes===12?1:mes+1;
   const proximoAno=mes===12?ano+1:ano;
   return `${proximoAno}-${String(proximoMes).padStart(2,"0")}-05`;
+};
+
+
+// Helper: carrega coleção uma vez (sem listener contínuo)
+const fetchCollection=async(col)=>{
+  const snap=await getDocs(collection(db,col));
+  return snap.docs.map(d=>({id:d.id,...d.data()}));
 };
 
 const cleanObj=(obj)=>Object.fromEntries(Object.entries(obj).filter(([,v])=>v!==undefined));
@@ -821,10 +828,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const salas=config.salas||[];
   const[users,setUsers]=useState([]);
   useEffect(()=>{
-    const unsub=onSnapshot(collection(db,"users"),snap=>{
-      setUsers(snap.docs.map(d=>({id:d.id,...d.data()})));
-    });
-    return unsub;
+    fetchCollection("users").then(setUsers);
   },[]);
 
   const diasNoMes=(m,a)=>new Date(a,m+1,0).getDate();
@@ -938,7 +942,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 
       // Salva todas em paralelo
       await Promise.all(geradasValidas.map(g=>setDoc(doc(db,"reservas",g.id),g)));
-      setReservas(prev=>[...prev,...geradasValidas]);
+      const atualizadas=await fetchCollection("reservas");
+      setReservas(atualizadas);
       try{await setDoc(doc(db,"historico",uid()),{tipo:"criacao",userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),date:String(geradas[0].date||""),horaInicio:String(geradas[0].horaInicio||""),horaFim:String(geradas[0].horaFim||""),sala:String(geradas[0].sala||""),modo:String(geradas[0].modo||"avulsa"),recorrencia:String(geradas[0].recorrencia||"unica"),recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",totalGeradas:Number(geradas.length||1),criadoEm:new Date().toISOString()});}catch(e){console.error(e);}
     }
   };
@@ -976,7 +981,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     }
     // Apaga tudo em paralelo
     await Promise.all(ids.map(id=>deleteDoc(doc(db,"reservas",id))));
-    setReservas(prev=>prev.filter(x=>!ids.includes(x.id)));
+    const atualizadas=await fetchCollection("reservas");
+    setReservas(atualizadas);
     setExcluindo(null);
   };
 
@@ -1003,7 +1009,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         ...(multaRes>0?[setDoc(doc(db,"lancamentos",uid()),cleanObj({userId:res.userId,userName:res.userName,tipo:"multa_cancelamento",valor:multaRes,pago:false,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,sala:res.sala,modoOriginal:res.modo,descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,criadoEm:new Date().toISOString()}))]:[])
       ]);
     }));
-    setReservas(prev=>prev.filter(x=>!paraCancel.find(r=>r.id===x.id)));
+    const atualizadas=await fetchCollection("reservas");
+    setReservas(atualizadas);
     setCancelando(null);
   };
 
@@ -1172,14 +1179,12 @@ function PendenciasView({userProfile,config}){
   const[ano,setAno]=useState(new Date().getFullYear());
 
   useEffect(()=>{
-    const unsubR=onSnapshot(collection(db,"reservas"),snap=>{
-      const todas=snap.docs.map(d=>({id:d.id,...d.data()}));
-      setMinhas(todas.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date)));
+    fetchCollection("reservas").then(snap=>{
+      setMinhas(snap.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date)));
     });
-    const unsubL=onSnapshot(collection(db,"lancamentos"),snap=>{
-      setLancamentos(snap.docs.map(d=>({id:d.id,...d.data()})).filter(l=>l.userId===userProfile.uid));
+    fetchCollection("lancamentos").then(snap=>{
+      setLancamentos(snap.filter(l=>l.userId===userProfile.uid));
     });
-    return()=>{unsubR();unsubL();};
   },[userProfile.uid]);
 
   const mesStr=`${ano}-${String(mes+1).padStart(2,"0")}`;
@@ -1358,10 +1363,7 @@ function CobrancasView({reservas,setReservas,config}){
   const[filtroPro,setFiltroPro]=useState("");
 
   useEffect(()=>{
-    const unsub=onSnapshot(collection(db,"lancamentos"),snap=>{
-      setLancamentos(snap.docs.map(d=>({id:d.id,...d.data()})));
-    });
-    return unsub;
+    fetchCollection("lancamentos").then(setLancamentos);
   },[]);
 
   const mesStr=`${ano}-${String(mes+1).padStart(2,"0")}`;
@@ -1592,11 +1594,7 @@ function ProfissionaisView(){
   const[saving,setSaving]=useState(false);
 
   useEffect(()=>{
-    const unsub=onSnapshot(collection(db,"users"),snap=>{
-      setUsers(snap.docs.map(d=>({id:d.id,...d.data()})));
-      setLoading(false);
-    });
-    return unsub;
+    fetchCollection("users").then(data=>{setUsers(data);setLoading(false);});
   },[]);
 
   const abrirNovo=()=>{setEditando(null);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});setErro("");setModal(true);};
@@ -1758,17 +1756,13 @@ function HistoricoView(){
   const[filtroTipo,setFiltroTipo]=useState("todos");
 
   useEffect(()=>{
-    const u1=onSnapshot(collection(db,"historico"),snap=>{
-      setHistorico(snap.docs.map(d=>({id:d.id,...d.data()})));
+    Promise.all([
+      fetchCollection("historico"),
+      fetchCollection("users"),
+      fetchCollection("reservas"),
+    ]).then(([hist,usrs,res])=>{
+      setHistorico(hist);setUsers(usrs);setReservasAll(res);setLoading(false);
     });
-    const u2=onSnapshot(collection(db,"users"),snap=>{
-      setUsers(snap.docs.map(d=>({id:d.id,...d.data()})));
-    });
-    const u3=onSnapshot(collection(db,"reservas"),snap=>{
-      setReservasAll(snap.docs.map(d=>({id:d.id,...d.data()})));
-      setLoading(false);
-    });
-    return()=>{u1();u2();u3();};
   },[]);
 
   const profissionais=users.filter(u=>u.role==="professional");
@@ -1966,13 +1960,10 @@ function FinanceiroView({reservas,config}){
   const CATEGORIAS=["Aluguel","Água / Luz / Gás","Cartão de crédito","Internet","Material","Manutenção","Outros"];
 
   useEffect(()=>{
-    const u1=onSnapshot(collection(db,"despesas"),snap=>{
-      setDespesas(snap.docs.map(d=>({id:d.id,...d.data()})));
-    });
-    const u2=onSnapshot(collection(db,"lancamentos"),snap=>{
-      setLancamentos(snap.docs.map(d=>({id:d.id,...d.data()})));
-    });
-    return()=>{u1();u2();};
+    Promise.all([
+      fetchCollection("despesas"),
+      fetchCollection("lancamentos"),
+    ]).then(([desp,lanc])=>{setDespesas(desp);setLancamentos(lanc);});
   },[]);
 
   const mesStr=`${ano}-${String(mes+1).padStart(2,"0")}`;
@@ -2213,9 +2204,9 @@ export default function App(){
 
   useEffect(()=>{
     if(!authUser)return;
-    const unsubR=onSnapshot(collection(db,"reservas"),snap=>{
-      setReservas(snap.docs.map(d=>({id:d.id,...d.data()})));
-    });
+    fetchCollection("reservas").then(setReservas);
+    const recarregarReservas=()=>fetchCollection("reservas").then(setReservas);
+    window._recarregarReservas=recarregarReservas;
     const loadConfig=async()=>{
       const snap=await getDoc(doc(db,"config","main"));
       if(snap.exists())setConfig(snap.data());
