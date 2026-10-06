@@ -22,7 +22,7 @@ const LOGO_VERDE = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEB
 const LOGO_AMARELO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAA8ADwDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD6pooooAKKKjnnit0DTSLGpIALHHNJtJXY0m9ESUUUUxBRRRQAUUUUAV765S1gLOwBOQvIGTjPeuK1e6e/upWSRpIIhlN3GF7mug8TwNO9iApKiQ7sEA9M8Z4zwaxSsYupVgDb/KYRNswJOMjg9D+leBmc51JultFW+en9fgepg4xhHn6l/QNTngQw3it9nQD96f8AlnnoD7V1AORkdK4eCVIoHt5J4XAzIySAlXf0JHJx+VdlZArZwBhhhGoI98V1ZZWlKPs272/qxhjIJS5krXJqKKK9U4gqG8uEtLaSeQMVQZwoyT6AVNUF/b/a7SWHfsLDhsZ2nqDj60AUb6+024hnt7uQAIQsqkHKMduOR3y6/nWLFBbWWoSxPqAKwNtZZIzlSyEjB+n4dqkvNKh8y4S5vrkSSP5sjJbt8x+U4BAPy/KvHPTrTL21tJpnu47m4dLmX96DE3Ax/Dx/u/ka56uFpVZKc1qjWFacE4xejGWNrpdncq15fLI6fMECEDgMcn1/1bflXUR31vJMkKSAyuGIUgg/LgN+W4fnXLSaXZsUaS8uWeSMjJtWI5RlJxjj/WN+ftW1Y6YPtkN8LlmUB9iCPYMPycg89QMfSnQw9PDx5aasKpVnVd5s2KKKK3MwooooAKKKKACiiigAooooA//Z";
 
 const DEFAULT_CONFIG={
-  valorHoraAvulsa:38,valorHoraFixa:33,valorParceria:50,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
+  valorHoraAvulsa:38,valorHoraFixa:33,valorHoraQuinzenal:38,valorParceria:50,nomeClinica:"Casa Aquarela",horaInicio:"08:00",horaFim:"21:00",
   salas:[
     {id:"sala1",label:"Sala 1",cor:"#B5590A",corLight:"#FDEFD8"},
     {id:"sala2",label:"Sala 2",cor:"#4A7C4E",corLight:"#E8F5E9"},
@@ -336,7 +336,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
   if(modo==="avulsa"){
     horaInicio=hIni;horaFim=hFim;
     const h=calcHoras(hIni,hFim);
-    const taxaHora=recorrencia==="semanal"?(config.valorHoraFixa||33):recorrencia==="parceria"?(config.valorParceria||50):(config.valorHoraAvulsa||38);
+    const taxaHora=recorrencia==="semanal"?(config.valorHoraFixa||33):recorrencia==="parceria"?(config.valorParceria||50):recorrencia==="quinzenal"?(config.valorHoraQuinzenal||38):(config.valorHoraAvulsa||38);
     valor=+(h*taxaHora).toFixed(2);
     resumoValor=fmtR(valor)+(recorrencia==="semanal"?" (tarifa hora fixa)":"");
   }
@@ -382,7 +382,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
     onClose();
   };
 
-  const tarifaAvulsa=recorrencia==="semanal"?fmtR(config.valorHoraFixa||33)+"/h (fixa)":recorrencia==="parceria"?fmtR(config.valorParceria||50)+"/h (parceria)":fmtR(config.valorHoraAvulsa||38)+"/h";
+  const tarifaAvulsa=recorrencia==="semanal"?fmtR(config.valorHoraFixa||33)+"/h (fixa)":recorrencia==="parceria"?fmtR(config.valorParceria||50)+"/h (parceria)":recorrencia==="quinzenal"?fmtR(config.valorHoraQuinzenal||38)+"/h":fmtR(config.valorHoraAvulsa||38)+"/h";
   const modoBtn=(m,label,sub)=>(<button onClick={()=>setModo(m)} style={{flex:1,padding:"10px 8px",border:`2px solid ${modo===m?C.accent:C.border}`,borderRadius:10,background:modo===m?C.accentLight:C.white,cursor:"pointer",fontFamily:"inherit"}}><div style={{fontWeight:700,fontSize:13,color:modo===m?C.accent:C.text}}>{label}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{m==="avulsa"?tarifaAvulsa:sub}</div></button>);
 
   return(
@@ -1722,9 +1722,10 @@ function ConfigView({config,setConfig}){
       <Card style={{marginBottom:20}}>
         <h3 style={{margin:"0 0 16px",color:C.text,fontSize:16,fontWeight:700}}>Valores de sublocação</h3>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-          <Field label="Hora avulsa (R$/h)" type="number" value={form.valorHoraAvulsa} onChange={v=>setForm(f=>({...f,valorHoraAvulsa:Number(v)}))} helper={`Tarifa para reservas avulsa e quinzenal`}/>
-          <Field label="Hora fixa semanal (R$/h)" type="number" value={form.valorHoraFixa||33} onChange={v=>setForm(f=>({...f,valorHoraFixa:Number(v)}))} helper={`Tarifa para pacotes semanais`}/>
-          <Field label="Parceria (R$/h)" type="number" value={form.valorParceria||50} onChange={v=>setForm(f=>({...f,valorParceria:Number(v)}))} helper={`Tarifa especial para profissionais parceiros`}/>
+          <Field label="Hora avulsa (R$/h)" type="number" value={form.valorHoraAvulsa} onChange={v=>setForm(f=>({...f,valorHoraAvulsa:Number(v)}))} helper="Tarifa para reservas avulsas"/>
+          <Field label="Hora quinzenal (R$/h)" type="number" value={form.valorHoraQuinzenal||38} onChange={v=>setForm(f=>({...f,valorHoraQuinzenal:Number(v)}))} helper="Tarifa para reservas quinzenais"/>
+          <Field label="Hora fixa semanal (R$/h)" type="number" value={form.valorHoraFixa||33} onChange={v=>setForm(f=>({...f,valorHoraFixa:Number(v)}))} helper="Tarifa para pacotes semanais"/>
+          <Field label="Parceria (R$/h)" type="number" value={form.valorParceria||50} onChange={v=>setForm(f=>({...f,valorParceria:Number(v)}))} helper="Tarifa especial para profissionais parceiros"/>
           <div>
             <div style={{fontSize:12,color:C.textMid,marginBottom:5,fontWeight:600}}>Mensalidade</div>
             <div style={{background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",fontSize:14,color:C.muted,fontStyle:"italic"}}>A combinar com gestores</div>
