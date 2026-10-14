@@ -305,9 +305,10 @@ function ModalExcluir({reserva,onClose,onConfirm}){
   );
 }
 
-function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inicial,users,isManager}){
+function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inicial,users,isManager,escopoEdicao}){
   const base=editando||inicial||{};
   const isEdit=!!editando;
+  const editandoSomente=isEdit&&escopoEdicao==="somente"; // editar só esta ocorrência
   const salas=config.salas||[];
   const periodos=config.periodos;
   const[sala,setSala]=useState(base.sala||salas[0]?.id||"sala1");
@@ -349,25 +350,34 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
     if(modo==="avulsa"&&horaParaMin(hFim)<=horaParaMin(hIni))return setErro("Horário de fim deve ser após o início.");
     const permissao=diaPermitido(data,horaInicio||hIni);
     if(!permissao.ok)return setErro(permissao.msg);
+
+    // Quando edita só esta ocorrência, preserva valor e recorrência originais
+    const valorFinal=editandoSomente?(editando.valor||0):(valor||0);
+    const recorrenciaFinal=editandoSomente?(editando.recorrencia||"unica"):(recorrencia||"unica");
+
     const dadosBase={
       id:isEdit?editando.id:uid(),
       date:data,sala,horaInicio,horaFim,
       modo:modo,
       periodo:modo==="periodo"?periodo:null,
-      valor:valor||0,
+      valor:valorFinal,
       userId:profSel||userProfile.uid,
       userName:(users?.find(u=>u.uid===profSel)?.nome||userProfile.displayName||userProfile.nome||userProfile.email||""),
       userColor:(users?.find(u=>u.uid===profSel)?.color||userProfile.color||"#4A7C4E"),
       modalidade:modalidade||"presencial",
-      recorrencia:recorrencia||"unica",
-      serieId:null,serieInicio:null,serieFim:null
+      recorrencia:recorrenciaFinal,
+      // Quando edita só esta ocorrência, mantém o serieId mas marca como exceção
+      serieId:editandoSomente?(editando.serieId||null):null,
+      serieInicio:editandoSomente?(editando.serieInicio||null):null,
+      serieFim:editandoSomente?(editando.serieFim||null):null,
+      excecao:editandoSomente?true:undefined,
     };
     if(!isEdit){
       const nova={date:data,sala,horaInicio,horaFim};
       if(conflito(reservas,nova,[]))return setErro("Já existe uma reserva nessa sala nesse horário.");
     }
     let dataFimCustom=null;
-    if(recorrencia!=="unica"){
+    if(!editandoSomente&&recorrencia!=="unica"){
       if(tipoFim==="semanas"&&semanas){
         const nSem=parseInt(semanas)||6;
         const interval=recorrencia==="quinzenal"?14:7;
@@ -378,7 +388,7 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
       // se "continua", dataFimCustom fica null e usa 24 meses
     }
     const geradas=isEdit?[dadosBase]:gerarRecorrentes(dadosBase,recorrencia,dataFimCustom);
-    onSave(geradas,isEdit);
+    onSave(geradas,isEdit,editandoSomente);
     onClose();
   };
 
@@ -455,10 +465,10 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
               </button>
             ))}
           </div>
-          {isEdit&&<div style={{fontSize:11,color:C.muted,marginTop:6}}>Ao salvar, cria novas reservas recorrentes a partir desta data.</div>}
+          {isEdit&&!editandoSomente&&<div style={{fontSize:11,color:C.muted,marginTop:6}}>Ao salvar, cria novas reservas recorrentes a partir desta data.</div>}
         </div>
-        {/* Duração da série - só quando recorrente */}
-        {recorrencia!=="unica"&&(
+        {/* Duração da série - só quando recorrente e não for edição pontual */}
+        {!editandoSomente&&recorrencia!=="unica"&&(
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,color:C.textMid,marginBottom:8,fontWeight:600}}>Duração</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
@@ -485,12 +495,20 @@ function ModalReserva({onClose,onSave,reservas,config,userProfile,editando,inici
             )}
           </div>
         )}
-        <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
-          {resumoValor}
-          {recorrencia!=="unica"&&tipoFim==="continua"&&<span style={{color:C.muted,marginLeft:8,fontWeight:500,fontSize:12}}>· Sem data fim</span>}
-          {recorrencia!=="unica"&&tipoFim==="semanas"&&semanas&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· {semanas} sessões</span>}
-          {recorrencia!=="unica"&&tipoFim==="data"&&dataFim&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(dataFim)}</span>}
-        </div>
+        {/* Aviso de edição pontual - valor preservado */}
+        {editandoSomente?(
+          <div style={{background:C.accentLight,border:`1px solid ${C.accent}44`,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            <div style={{fontWeight:700,color:C.accent,fontSize:14,marginBottom:4}}>✏️ Edição pontual — somente este horário</div>
+            <div style={{fontSize:12,color:C.textMid}}>O valor ({fmtR(editando.valor||0)}) e a recorrência da série não serão alterados. Somente data, horário e sala mudam nesta ocorrência específica.</div>
+          </div>
+        ):(
+          <div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:14,color:C.text,fontWeight:600}}>
+            {resumoValor}
+            {recorrencia!=="unica"&&tipoFim==="continua"&&<span style={{color:C.muted,marginLeft:8,fontWeight:500,fontSize:12}}>· Sem data fim</span>}
+            {recorrencia!=="unica"&&tipoFim==="semanas"&&semanas&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· {semanas} sessões</span>}
+            {recorrencia!=="unica"&&tipoFim==="data"&&dataFim&&<span style={{color:C.warning,marginLeft:8,fontWeight:500,fontSize:12}}>· até {fmt(dataFim)}</span>}
+          </div>
+        )}
       </>
       {isManager&&users&&users.length>0&&(
         <div style={{marginBottom:14}}>
@@ -675,6 +693,32 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,onDesconto,is
   const valor=Number(reserva.valor||0);
   const{pct,msg}=calcMulta(reserva);
   const cancelado=reserva.status==="cancelado";
+  const temSerie=!!(reserva.serieId)||(!!reserva.recorrencia&&reserva.recorrencia!=="unica");
+  const[escolhaEditar,setEscolhaEditar]=useState(false);
+
+  if(escolhaEditar){
+    return(
+      <Modal title="Editar Reserva" onClose={onClose}>
+        <div style={{background:C.surfaceAlt,borderRadius:10,padding:14,marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{reserva.userName}</div>
+          <div style={{fontSize:13,color:C.textMid}}>📅 {fmt(reserva.date)} · {reserva.horaInicio}–{reserva.horaFim}</div>
+        </div>
+        <div style={{marginBottom:8,fontSize:13,color:C.textMid,fontWeight:600}}>O que você deseja editar?</div>
+        {[
+          ["somente","✏️ Somente este horário","Altera apenas essa data específica. O valor e a recorrência da série não mudam."],
+          ["serie","🔄 Esta e todas as seguintes","Altera o horário desta data em diante para toda a série."],
+        ].map(([v,l,sub])=>(
+          <button key={v} onClick={()=>onEditar(v)}
+            style={{display:"flex",flexDirection:"column",alignItems:"flex-start",width:"100%",padding:"12px 14px",border:`1px solid ${C.border}`,borderRadius:10,marginBottom:10,background:C.white,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+            <div style={{fontSize:14,fontWeight:700,color:C.accent,marginBottom:3}}>{l}</div>
+            <div style={{fontSize:12,color:C.muted}}>{sub}</div>
+          </button>
+        ))}
+        <Btn variant="ghost" full onClick={onClose}>Cancelar</Btn>
+      </Modal>
+    );
+  }
+
   return(
     <Modal title="Reserva" onClose={onClose}>
       {/* Detalhes da reserva */}
@@ -728,8 +772,8 @@ function ModalAcoes({reserva,onClose,onEditar,onCancelar,onExcluir,onDesconto,is
 
               {/* Editar - só se fora do prazo ou gestor */}
               {editavel?(
-                <Btn variant="secondary" full onClick={onEditar}>
-                  ✏️ Editar horário / sala / recorrência
+                <Btn variant="secondary" full onClick={()=>temSerie?setEscolhaEditar(true):onEditar("unica")}>
+                  ✏️ Editar horário / sala
                 </Btn>
               ):(
                 <div style={{background:C.surfaceAlt,borderRadius:8,padding:"10px 14px",textAlign:"center",fontSize:13,color:C.muted,fontStyle:"italic"}}>
@@ -820,6 +864,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[anoNav,setAnoNav]=useState(new Date().getFullYear());
   const[modalAberto,setModalAberto]=useState(false);
   const[editando,setEditando]=useState(null);
+  const[escopoEdicao,setEscopoEdicao]=useState("unica");
   const[excluindo,setExcluindo]=useState(null);
   const[cancelando,setCancelando]=useState(null);
   const[acoes,setAcoes]=useState(null);
@@ -878,23 +923,24 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     if(isManager||isOwn) setAcoes(r);
   };
 
-  const salvarReservas=async(geradas,isEdit)=>{
+  const salvarReservas=async(geradas,isEdit,editandoSomente)=>{
     if(isEdit){
       if(!isManager&&editando.userId!==userProfile.uid){alert("Sem permissão.");return;}
       if(!isManager&&!podeEditar(editando)){alert("Prazo de edição vencido.");return;}
       const nova={date:geradas[0].date,sala:geradas[0].sala,horaInicio:geradas[0].horaInicio,horaFim:geradas[0].horaFim};
       if(conflito(reservas,nova,[editando.id])){alert("Conflito de horário.");return;}
       try{
-        const mudancas=[editando.date!==geradas[0].date?"data":"",editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim?"horario":"",editando.sala!==geradas[0].sala?"sala":"",editando.modalidade!==geradas[0].modalidade?"modalidade":"",(editando.recorrencia||"unica")!==(geradas[0].recorrencia||"unica")?"recorrencia":""].filter(Boolean).join(",");
+        const mudancas=[editando.date!==geradas[0].date?"data":"",editando.horaInicio!==geradas[0].horaInicio||editando.horaFim!==geradas[0].horaFim?"horario":"",editando.sala!==geradas[0].sala?"sala":"",editando.modalidade!==geradas[0].modalidade?"modalidade":"",editandoSomente?"pontual":""].filter(Boolean).join(",");
         await setDoc(doc(db,"historico",uid()),{tipo:"edicao",reservaId:String(editando.id||""),userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),mudancas,antesDate:String(editando.date||""),antesInicio:String(editando.horaInicio||""),antesFim:String(editando.horaFim||""),antesSala:String(editando.sala||""),antesModalidade:String(editando.modalidade||"presencial"),antesRecorrencia:String(editando.recorrencia||"unica"),depoisDate:String(geradas[0].date||""),depoisInicio:String(geradas[0].horaInicio||""),depoisFim:String(geradas[0].horaFim||""),depoisSala:String(geradas[0].sala||""),depoisModalidade:String(geradas[0].modalidade||"presencial"),depoisRecorrencia:String(geradas[0].recorrencia||"unica"),editadoEm:new Date().toISOString()});
       }catch(e){console.error(e);}
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
-      if(geradas[0].recorrencia&&geradas[0].recorrencia!=="unica"){
+      // Só gera nova série se NÃO for edição pontual
+      if(!editandoSomente&&geradas[0].recorrencia&&geradas[0].recorrencia!=="unica"){
         const serieId=uid();const dataFim=addMonths(geradas[0].date,6);
         let dataAtual=addDays(geradas[0].date,geradas[0].recorrencia==="semanal"?7:14);
         while(dataAtual<=dataFim){
-          const novaRes=cleanObj({...geradas[0],id:uid(),date:dataAtual,serieId,serieInicio:geradas[0].date,serieFim:dataFim});
+          const novaRes=cleanObj({...geradas[0],id:uid(),date:dataAtual,serieId,serieInicio:geradas[0].date,serieFim:dataFim,excecao:undefined});
           if(!conflito(reservas,{date:dataAtual,sala:novaRes.sala,horaInicio:novaRes.horaInicio,horaFim:novaRes.horaFim},[])){
             await setDoc(doc(db,"reservas",novaRes.id),novaRes);
             setReservas(prev=>[...prev,novaRes]);
@@ -1154,14 +1200,14 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         </div>
       </Card>
 
-      {modalAberto&&editando&&<ModalReserva onClose={()=>{setModalAberto(false);setEditando(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={editando} inicial={null} users={users} isManager={isManager}/>}
+      {modalAberto&&editando&&<ModalReserva onClose={()=>{setModalAberto(false);setEditando(null);setEscopoEdicao("unica");}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={editando} inicial={null} users={users} isManager={isManager} escopoEdicao={escopoEdicao}/>}
       {modalAberto&&!editando&&<ModalReserva onClose={()=>{setModalAberto(false);setSlotPre(null);}} onSave={salvarReservas} reservas={reservas} config={config} userProfile={userProfile} editando={null} inicial={slotPre} users={users} isManager={isManager}/>}
       {excluindo&&<ModalExcluir reserva={excluindo} onClose={()=>setExcluindo(null)} onConfirm={confirmarExcluir}/>}
       {cancelando&&<ModalCancelamento reserva={cancelando} onClose={()=>setCancelando(null)} onConfirm={confirmarCancelamento}/>}
       {acoes&&<ModalAcoes reserva={acoes} salas={salas} isManager={isManager}
         onClose={()=>setAcoes(null)}
         onCancelar={()=>{setCancelando(acoes);setAcoes(null);}}
-        onEditar={()=>{setEditando(acoes);setSlotPre(null);setModalAberto(true);setAcoes(null);}}
+        onEditar={(escopo)=>{setEscopoEdicao(escopo||"unica");setEditando(acoes);setSlotPre(null);setModalAberto(true);setAcoes(null);}}
         onExcluir={()=>{setExcluindo(acoes);setAcoes(null);}}
         onDesconto={()=>{setDesconto(acoes);setAcoes(null);}}
       />}
