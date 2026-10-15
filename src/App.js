@@ -1176,7 +1176,7 @@ function AgendaView({reservas,setReservas,users,userProfile,config,isManager}){
                         {r&&<div style={{position:"absolute",top:0,left:0,bottom:0,width:4,background:corPro}}/>}
                         {isFirst&&(
                           <div style={{paddingLeft:8,paddingTop:3,fontSize:9,fontWeight:700,color:corPro,lineHeight:1.3,overflow:"hidden"}}>
-                            {r.userName?.split(" ")[0]}
+                            {nomeAbrev(r.userName||"")}
                           </div>
                         )}
                       </td>
