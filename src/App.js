@@ -858,7 +858,7 @@ function ModalCancelamento({reserva,onClose,onConfirm}){
   );
 }
 
-function AgendaView({reservas,setReservas,userProfile,config,isManager}){
+function AgendaView({reservas,setReservas,users,userProfile,config,isManager}){
   const[diaSel,setDiaSel]=useState(today());
   const[mesNav,setMesNav]=useState(new Date().getMonth());
   const[anoNav,setAnoNav]=useState(new Date().getFullYear());
@@ -871,10 +871,6 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
   const[desconto,setDesconto]=useState(null);
   const[slotPre,setSlotPre]=useState(null);
   const salas=config.salas||[];
-  const[users,setUsers]=useState([]);
-  useEffect(()=>{
-    fetchCollection("users").then(setUsers);
-  },[]);
 
   const diasNoMes=(m,a)=>new Date(a,m+1,0).getDate();
   const primeiroDia=(m,a)=>new Date(a,m,1).getDay();
@@ -988,8 +984,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 
       // Salva todas em paralelo
       await Promise.all(geradasValidas.map(g=>setDoc(doc(db,"reservas",g.id),g)));
-      const atualizadas=await fetchCollection("reservas");
-      setReservas(atualizadas);
+      setReservas(prev=>[...prev,...geradasValidas]);
       try{await setDoc(doc(db,"historico",uid()),{tipo:"criacao",userId:String(userProfile.uid||""),userName:String(userProfile.nome||userProfile.email||""),date:String(geradas[0].date||""),horaInicio:String(geradas[0].horaInicio||""),horaFim:String(geradas[0].horaFim||""),sala:String(geradas[0].sala||""),modo:String(geradas[0].modo||"avulsa"),recorrencia:String(geradas[0].recorrencia||"unica"),recorrenciaLabel:geradas[0].recorrencia==="semanal"?"Semanalmente":geradas[0].recorrencia==="quinzenal"?"Quinzenalmente":"Avulsa",totalGeradas:Number(geradas.length||1),criadoEm:new Date().toISOString()});}catch(e){console.error(e);}
     }
   };
@@ -1027,8 +1022,7 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
     }
     // Apaga tudo em paralelo
     await Promise.all(ids.map(id=>deleteDoc(doc(db,"reservas",id))));
-    const atualizadas=await fetchCollection("reservas");
-    setReservas(atualizadas);
+    setReservas(prev=>prev.filter(r=>!ids.includes(r.id)));
     setExcluindo(null);
   };
 
@@ -1055,8 +1049,8 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
         ...(multaRes>0?[setDoc(doc(db,"lancamentos",uid()),cleanObj({userId:res.userId,userName:res.userName,tipo:"multa_cancelamento",valor:multaRes,pago:false,date:res.date,horaInicio:res.horaInicio,horaFim:res.horaFim,sala:res.sala,modoOriginal:res.modo,descricao:`Multa de cancelamento - ${fmt(res.date)} ${res.horaInicio}–${res.horaFim}`,criadoEm:new Date().toISOString()}))]:[])
       ]);
     }));
-    const atualizadas=await fetchCollection("reservas");
-    setReservas(atualizadas);
+    const idsCancelados=paraCancel.map(r=>r.id);
+    setReservas(prev=>prev.filter(r=>!idsCancelados.includes(r.id)));
     setCancelando(null);
   };
 
@@ -1217,21 +1211,13 @@ function AgendaView({reservas,setReservas,userProfile,config,isManager}){
 }
 
 
-function PendenciasView({userProfile,config}){
+function PendenciasView({userProfile,reservas,lancamentos,config}){
   const salas=config.salas||[];
-  const[lancamentos,setLancamentos]=useState([]);
-  const[minhas,setMinhas]=useState([]);
   const[mes,setMes]=useState(new Date().getMonth());
   const[ano,setAno]=useState(new Date().getFullYear());
 
-  useEffect(()=>{
-    fetchCollection("reservas").then(snap=>{
-      setMinhas(snap.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date)));
-    });
-    fetchCollection("lancamentos").then(snap=>{
-      setLancamentos(snap.filter(l=>l.userId===userProfile.uid));
-    });
-  },[userProfile.uid]);
+  const minhas=reservas.filter(r=>r.userId===userProfile.uid).sort((a,b)=>b.date.localeCompare(a.date));
+  const lancamentosMeus=lancamentos.filter(l=>l.userId===userProfile.uid);
 
   const mesStr=`${ano}-${String(mes+1).padStart(2,"0")}`;
   const vencimento=vencimentoMes(mesStr);
@@ -1243,7 +1229,7 @@ function PendenciasView({userProfile,config}){
 
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
   const reservasMes=minhas.filter(r=>r.date?.slice(0,7)===mesStr);
-  const multasMes=lancamentos.filter(l=>(l.date?.slice(0,7)===mesStr)||(l.criadoEm?.slice(0,7)===mesStr));
+  const multasMes=lancamentosMeus.filter(l=>(l.date?.slice(0,7)===mesStr)||(l.criadoEm?.slice(0,7)===mesStr));
   const pendenteReservas=reservasMes.filter(r=>!r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
   const pendenteMultas=multasMes.filter(l=>!l.pago&&l.valor>0).reduce((s,l)=>s+Number(l.valor||0),0);
   const totalPendente=pendenteReservas+pendenteMultas;
@@ -1321,7 +1307,7 @@ function PendenciasView({userProfile,config}){
 }
 
 
-function DashboardView({reservas,config}){
+function DashboardView({reservas,lancamentos,config}){
   const salas=config.salas||[];
   const mes=today().slice(0,7);
   const mesRes=reservas.filter(r=>r.date?.slice(0,7)===mes||(r.modo==="mensal"&&r.mesMensal===mes));
@@ -1401,16 +1387,11 @@ function DashboardView({reservas,config}){
 }
 
 
-function CobrancasView({reservas,setReservas,config}){
+function CobrancasView({reservas,setReservas,lancamentos,setLancamentos,users,config}){
   const salas=config.salas||[];
   const[mes,setMes]=useState(new Date().getMonth());
   const[ano,setAno]=useState(new Date().getFullYear());
-  const[lancamentos,setLancamentos]=useState([]);
   const[filtroPro,setFiltroPro]=useState("");
-
-  useEffect(()=>{
-    fetchCollection("lancamentos").then(setLancamentos);
-  },[]);
 
   const mesStr=`${ano}-${String(mes+1).padStart(2,"0")}`;
   const modoLabel={avulsa:"Hora Avulsa",periodo:"Período",mensal:"Mensal"};
@@ -1630,18 +1611,12 @@ function CobrancasView({reservas,setReservas,config}){
 
 
 
-function ProfissionaisView(){
-  const[users,setUsers]=useState([]);
-  const[loading,setLoading]=useState(true);
+function ProfissionaisView({users,setUsers}){
   const[modal,setModal]=useState(false);
   const[editando,setEditando]=useState(null);
   const[form,setForm]=useState({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});
   const[erro,setErro]=useState("");
   const[saving,setSaving]=useState(false);
-
-  useEffect(()=>{
-    fetchCollection("users").then(data=>{setUsers(data);setLoading(false);});
-  },[]);
 
   const abrirNovo=()=>{setEditando(null);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});setErro("");setModal(true);};
   const abrirEditar=(u)=>{setEditando(u);setForm({nome:u.nome||"",email:u.email||"",senha:"",role:u.role||"professional",color:u.color||"#4A7C4E"});setErro("");setModal(true);};
@@ -1650,11 +1625,15 @@ function ProfissionaisView(){
     setErro("");setSaving(true);
     try{
       if(editando){
-        await setDoc(doc(db,"users",editando.uid),cleanObj({...editando,nome:form.nome,role:form.role,color:form.color}));
+        const atualizado=cleanObj({...editando,nome:form.nome,role:form.role,color:form.color});
+        await setDoc(doc(db,"users",editando.uid),atualizado);
+        setUsers(prev=>prev.map(u=>u.uid===editando.uid?atualizado:u));
         setModal(false);
       } else {
         const cred=await createUserWithEmailAndPassword(auth,form.email,form.senha);
-        await setDoc(doc(db,"users",cred.user.uid),{uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,color:form.color||"#4A7C4E",desconto:form.desconto?Number(form.desconto):0,criadoEm:new Date().toISOString()});
+        const novoUser={uid:cred.user.uid,email:form.email,nome:form.nome,role:form.role,color:form.color||"#4A7C4E",desconto:form.desconto?Number(form.desconto):0,criadoEm:new Date().toISOString()};
+        await setDoc(doc(db,"users",cred.user.uid),novoUser);
+        setUsers(prev=>[...prev,novoUser]);
         setModal(false);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});
       }
     }catch(e){
@@ -1673,27 +1652,25 @@ function ProfissionaisView(){
         <h2 style={{margin:0,color:C.text,fontSize:22,fontWeight:800}}>Profissionais</h2>
         <Btn onClick={abrirNovo}>+ Cadastrar</Btn>
       </div>
-      {loading?<p style={{color:C.muted}}>Carregando...</p>:(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {profissionais.map(u=>(<Card key={u.id} style={{display:"flex",alignItems:"center",gap:14}}>
-            <div style={{width:40,height:40,borderRadius:"50%",background:u.color||C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:16,flexShrink:0}}>
-              {u.nome?.charAt(0)?.toUpperCase()||"?"}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:15,fontWeight:700,color:C.text}}>{u.nome}</div>
-              <div style={{fontSize:12,color:C.muted}}>{u.email}</div>
-              <span style={{background:u.role==="manager"?C.warningLight:C.accentLight,color:u.role==="manager"?C.warning:C.accent,padding:"1px 6px",borderRadius:4,fontSize:11,fontWeight:600}}>
-                {u.role==="manager"?"Gestor":"Profissional"}
-              </span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:20,height:20,borderRadius:"50%",background:u.color||C.accent,border:`2px solid ${C.border}`}}/>
-              <Btn variant="secondary" small onClick={()=>abrirEditar(u)}>✏️ Editar</Btn>
-            </div>
-          </Card>))}
-          {profissionais.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhum profissional cadastrado ainda.</p></Card>}
-        </div>
-      )}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {profissionais.map(u=>(<Card key={u.id} style={{display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:40,height:40,borderRadius:"50%",background:u.color||C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:16,flexShrink:0}}>
+            {u.nome?.charAt(0)?.toUpperCase()||"?"}
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:15,fontWeight:700,color:C.text}}>{u.nome}</div>
+            <div style={{fontSize:12,color:C.muted}}>{u.email}</div>
+            <span style={{background:u.role==="manager"?C.warningLight:C.accentLight,color:u.role==="manager"?C.warning:C.accent,padding:"1px 6px",borderRadius:4,fontSize:11,fontWeight:600}}>
+              {u.role==="manager"?"Gestor":"Profissional"}
+            </span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:20,height:20,borderRadius:"50%",background:u.color||C.accent,border:`2px solid ${C.border}`}}/>
+            <Btn variant="secondary" small onClick={()=>abrirEditar(u)}>✏️ Editar</Btn>
+          </div>
+        </Card>))}
+        {profissionais.length===0&&<Card><p style={{color:C.muted,margin:0}}>Nenhum profissional cadastrado ainda.</p></Card>}
+      </div>
       {modal&&(
         <Modal title={editando?"Editar Profissional":"Novo Profissional"} onClose={()=>setModal(false)}>
           {editando&&<div style={{background:C.accentLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"8px 12px",fontSize:13,color:C.textMid,marginBottom:14}}>
@@ -1794,23 +1771,9 @@ function ConfigView({config,setConfig}){
 }
 
 
-function HistoricoView(){
-  const[historico,setHistorico]=useState([]);
-  const[users,setUsers]=useState([]);
-  const[reservasAll,setReservasAll]=useState([]);
-  const[loading,setLoading]=useState(true);
+function HistoricoView({historico,users,reservas}){
   const[filtroPro,setFiltroPro]=useState("");
   const[filtroTipo,setFiltroTipo]=useState("todos");
-
-  useEffect(()=>{
-    Promise.all([
-      fetchCollection("historico"),
-      fetchCollection("users"),
-      fetchCollection("reservas"),
-    ]).then(([hist,usrs,res])=>{
-      setHistorico(hist);setUsers(usrs);setReservasAll(res);setLoading(false);
-    });
-  },[]);
 
   const profissionais=users.filter(u=>u.role==="professional");
   const opcoesProf=[{value:"",label:"Todos os profissionais"},...profissionais.map(p=>({value:p.uid,label:p.nome||p.email}))];
@@ -1853,8 +1816,6 @@ function HistoricoView(){
     const colors={cancelamento:C.danger,criacao:C.success,edicao:C.accent};
     return<div style={{width:8,height:8,borderRadius:"50%",background:colors[tipo]||C.muted,flexShrink:0,marginTop:6}}/>;
   };
-
-  if(loading)return<div style={{color:C.muted,padding:20}}>Carregando...</div>;
 
   return(
     <div>
@@ -1995,9 +1956,7 @@ function HistoricoView(){
 
 
 
-function FinanceiroView({reservas,config}){
-  const[despesas,setDespesas]=useState([]);
-  const[lancamentos,setLancamentos]=useState([]);
+function FinanceiroView({reservas,lancamentos,setLancamentos,despesas,setDespesas,config}){
   const[mes,setMes]=useState(new Date().getMonth());
   const[ano,setAno]=useState(new Date().getFullYear());
   const[modal,setModal]=useState(false);
@@ -2005,13 +1964,6 @@ function FinanceiroView({reservas,config}){
   const[form,setForm]=useState({nome:"",valor:"",categoria:"Aluguel",tipo:"fixa",diaVencimento:"18",vencimento:"",pago:false,observacao:""});
 
   const CATEGORIAS=["Aluguel","Água / Luz / Gás","Cartão de crédito","Internet","Material","Manutenção","Outros"];
-
-  useEffect(()=>{
-    Promise.all([
-      fetchCollection("despesas"),
-      fetchCollection("lancamentos"),
-    ]).then(([desp,lanc])=>{setDespesas(desp);setLancamentos(lanc);});
-  },[]);
 
   const mesStr=`${ano}-${String(mes+1).padStart(2,"0")}`;
   const navMes=(dir)=>{
@@ -2231,6 +2183,10 @@ export default function App(){
   const[authUser,setAuthUser]=useState(undefined);
   const[userProfile,setUserProfile]=useState(null);
   const[reservas,setReservas]=useState([]);
+  const[users,setUsers]=useState([]);
+  const[lancamentos,setLancamentos]=useState([]);
+  const[historico,setHistorico]=useState([]);
+  const[despesas,setDespesas]=useState([]);
   const[config,setConfig]=useState(DEFAULT_CONFIG);
   const[view,setView]=useState("dashboard");
   const[loadingData,setLoadingData]=useState(true);
@@ -2251,15 +2207,25 @@ export default function App(){
 
   useEffect(()=>{
     if(!authUser)return;
-    fetchCollection("reservas").then(setReservas);
-    const recarregarReservas=()=>fetchCollection("reservas").then(setReservas);
-    window._recarregarReservas=recarregarReservas;
-    const loadConfig=async()=>{
-      const snap=await getDoc(doc(db,"config","main"));
-      if(snap.exists())setConfig(snap.data());
+    // Carrega TUDO de uma vez — nenhuma tela filha busca dados próprios
+    const carregar=async()=>{
+      const[res,usrs,lanc,hist,desp,cfgSnap]=await Promise.all([
+        fetchCollection("reservas"),
+        fetchCollection("users"),
+        fetchCollection("lancamentos"),
+        fetchCollection("historico"),
+        fetchCollection("despesas"),
+        getDoc(doc(db,"config","main")),
+      ]);
+      setReservas(res);
+      setUsers(usrs);
+      setLancamentos(lanc);
+      setHistorico(hist);
+      setDespesas(desp);
+      if(cfgSnap.exists())setConfig(cfgSnap.data());
       setLoadingData(false);
     };
-    loadConfig();
+    carregar();
   },[authUser]);
 
   useEffect(()=>{
@@ -2304,13 +2270,13 @@ export default function App(){
 
       {/* Conteúdo */}
       <div style={{padding:"12px 12px",maxWidth:900,margin:"0 auto"}}>
-        {view==="dashboard"&&isManager&&<DashboardView reservas={reservas} config={config}/>}
-        {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} userProfile={userProfile} config={config} isManager={isManager}/>}
-        {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} config={config}/>}
-        {view==="pendencias"&&!isManager&&<PendenciasView userProfile={userProfile} config={config}/>}
-        {view==="financeiro"&&isManager&&<FinanceiroView reservas={reservas} config={config}/>}
-        {view==="historico"&&isManager&&<HistoricoView/>}
-        {view==="profissionais"&&isManager&&<ProfissionaisView/>}
+        {view==="dashboard"&&isManager&&<DashboardView reservas={reservas} lancamentos={lancamentos} config={config}/>}
+        {view==="agenda"&&<AgendaView reservas={reservas} setReservas={setReservas} users={users} userProfile={userProfile} config={config} isManager={isManager}/>}
+        {view==="cobrancas"&&isManager&&<CobrancasView reservas={reservas} setReservas={setReservas} lancamentos={lancamentos} setLancamentos={setLancamentos} users={users} config={config}/>}
+        {view==="pendencias"&&!isManager&&<PendenciasView userProfile={userProfile} reservas={reservas} lancamentos={lancamentos} config={config}/>}
+        {view==="financeiro"&&isManager&&<FinanceiroView reservas={reservas} lancamentos={lancamentos} despesas={despesas} setDespesas={setDespesas} lancamentosAll={lancamentos} setLancamentos={setLancamentos} config={config}/>}
+        {view==="historico"&&isManager&&<HistoricoView historico={historico} users={users} reservas={reservas}/>}
+        {view==="profissionais"&&isManager&&<ProfissionaisView users={users} setUsers={setUsers}/>}
         {view==="configuracoes"&&isManager&&<ConfigView config={config} setConfig={setConfig}/>}
       </div>
     </div>
