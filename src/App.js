@@ -42,6 +42,7 @@ const fmtR=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BR
 const diaSem=d=>DIAS_SEMANA[new Date(d+"T12:00:00").getDay()];
 const calcHoras=(ini,fim)=>{const[h1,m1]=ini.split(":").map(Number),[h2,m2]=fim.split(":").map(Number);const diff=(h2*60+m2)-(h1*60+m1);return diff>0?diff/60:0;};
 const horaParaMin=h=>{const[hh,mm]=h.split(":").map(Number);return hh*60+mm;};
+const nomeAbrev=(n="")=>{const p=n.trim().split(/\s+/);if(p.length<=1)return n;return p[0]+" "+p[p.length-1];};
 const conflito=(reservas,nova,excludeIds=[])=>reservas.some(r=>!excludeIds.includes(r.id)&&r.date===nova.date&&r.sala===nova.sala&&horaParaMin(r.horaInicio)<horaParaMin(nova.horaFim)&&horaParaMin(r.horaFim)>horaParaMin(nova.horaInicio));
 const addDays=(dateStr,days)=>{const d=new Date(dateStr+"T12:00:00");d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);};
 const addMonths=(dateStr,months)=>{const d=new Date(dateStr+"T12:00:00");d.setMonth(d.getMonth()+months);return d.toISOString().slice(0,10);};
@@ -572,7 +573,7 @@ function GradeSemanal({reservas,users,semanaBase,onSlotClick,onBlockClick,config
                       opacity:r?.status==="cancelado"?0.4:1}}>
                     {isFirst&&(
                       <div style={{background:"rgba(0,0,0,0.18)",color:"#fff",padding:"2px 4px",fontSize:9,fontWeight:700,lineHeight:1.3,overflow:"hidden",whiteSpace:"nowrap"}}>
-                        {nome.split(" ").slice(0,2).join(" ")}{r.recorrencia&&r.recorrencia!=="unica"?" ↻":""}{r.modalidade==="online"?" 💻":""}
+                        {nomeAbrev(nome)}{r.recorrencia&&r.recorrencia!=="unica"?" ↻":""}{r.modalidade==="online"?" 💻":""}
                       </div>
                     )}
                   </td>
@@ -1129,7 +1130,7 @@ function AgendaView({reservas,setReservas,users,userProfile,config,isManager}){
                 <div style={{width:3,height:36,background:sala?.cor||C.accent,borderRadius:2,flexShrink:0}}/>
                 <div style={{fontWeight:700,fontSize:12,color:C.muted,minWidth:42}}>{r.horaInicio}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.userName?.split(" ").slice(0,2).join(" ")}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nomeAbrev(r.userName||"")}</div>
                   <div style={{fontSize:11,color:C.muted}}>{sala?.label} · {r.horaInicio}–{r.horaFim}</div>
                 </div>
                 <Badge label={r.pago?"✓ Pago":"Pendente"} bg={r.pago?C.successLight:C.warningLight} color={r.pago?C.success:C.warning}/>
@@ -1341,7 +1342,7 @@ function DashboardView({reservas,lancamentos,config}){
           :hojRes.map(r=>(
             <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
               <div style={{fontSize:12,color:C.textMid,fontWeight:600,minWidth:80}}>{r.horaInicio}–{r.horaFim}</div>
-              <div style={{flex:1,fontSize:13,color:C.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.userName?.split(" ").slice(0,2).join(" ")}</div>
+              <div style={{flex:1,fontSize:13,color:C.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nomeAbrev(r.userName||"")}</div>
               <SalaTag salaId={r.sala} salas={salas}/>
             </div>
           ))
@@ -1371,7 +1372,7 @@ function DashboardView({reservas,lancamentos,config}){
           {byUser.map(pro=>(
             <div key={pro.uid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pro.name.split(" ").slice(0,2).join(" ")}</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nomeAbrev(pro.name)}</div>
                 <div style={{fontSize:11,color:C.muted}}>{pro.reservas} reservas · {pro.horas.toFixed(1)}h</div>
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
