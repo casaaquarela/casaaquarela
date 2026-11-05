@@ -932,8 +932,14 @@ function AgendaView({reservas,setReservas,users,userProfile,config,isManager}){
       }catch(e){console.error(e);}
       await setDoc(doc(db,"reservas",editando.id),cleanObj(geradas[0]));
       setReservas(prev=>prev.map(r=>r.id===editando.id?geradas[0]:r));
-      // Só gera nova série se NÃO for edição pontual
-      if(!editandoSomente&&geradas[0].recorrencia&&geradas[0].recorrencia!=="unica"){
+      // Só gera nova série se o usuário escolheu explicitamente "esta e todas as seguintes"
+      if(escopoEdicao==="serie"&&geradas[0].recorrencia&&geradas[0].recorrencia!=="unica"){
+        // Remove todas as ocorrências futuras da série antiga (a partir da data editada, exceto a própria)
+        if(editando.serieId){
+          const futuras=reservas.filter(r=>r.serieId===editando.serieId&&r.id!==editando.id&&r.date>=geradas[0].date);
+          await Promise.all(futuras.map(r=>deleteDoc(doc(db,"reservas",r.id))));
+          setReservas(prev=>prev.filter(r=>!(r.serieId===editando.serieId&&r.id!==editando.id&&r.date>=geradas[0].date)));
+        }
         const serieId=uid();const dataFim=addMonths(geradas[0].date,6);
         let dataAtual=addDays(geradas[0].date,geradas[0].recorrencia==="semanal"?7:14);
         while(dataAtual<=dataFim){
