@@ -33,6 +33,11 @@ const DEFAULT_CONFIG={
     tarde:{label:"Tarde",inicio:"13:00",fim:"17:00",valor:115},
     noite:{label:"Noite",inicio:"17:00",fim:"21:00",valor:125},
   },
+  faixasDescontoVolume:[
+    {horas:20,pct:10},
+    {horas:30,pct:15},
+    {horas:40,pct:20},
+  ],
 };
 
 const uid=()=>Math.random().toString(36).slice(2,10);
@@ -1442,6 +1447,9 @@ function CobrancasView({reservas,setReservas,lancamentos,setLancamentos,users,co
     setLancamentos(prev=>prev.map(l=>idsMultas.includes(l.id)?{...l,pago:true}:l));
   };
 
+  const faixasVol=(config.faixasDescontoVolume||DEFAULT_CONFIG.faixasDescontoVolume).slice().sort((a,b)=>b.horas-a.horas);
+  const calcDescontoVolume=(horas)=>{const f=faixasVol.find(x=>horas>=x.horas);return f||null;};
+
   const porUser=Object.entries(todosIds)
     .filter(([userId])=>!filtroPro||userId===filtroPro)
     .map(([userId,name])=>{
@@ -1451,7 +1459,15 @@ function CobrancasView({reservas,setReservas,lancamentos,setLancamentos,users,co
       const totalMul=ms.reduce((s,l)=>s+Number(l.valor||0),0);
       const pagoRes=rs.filter(r=>r.pago).reduce((s,r)=>s+Number(r.valor||0),0);
       const pagoMul=ms.filter(l=>l.pago||l.valor===0).reduce((s,l)=>s+Number(l.valor||0),0);
-      return{userId,name,reservas:rs,multas:ms,totalRes,totalMul,total:totalRes+totalMul,pago:pagoRes+pagoMul};
+      // Horas totais de reservas no mês
+      const horasTotais=rs.reduce((s,r)=>{
+        if(r.horaInicio&&r.horaFim)return s+calcHoras(r.horaInicio,r.horaFim);
+        return s;
+      },0);
+      const faixaAtingida=calcDescontoVolume(horasTotais);
+      const descontoVolumePct=faixaAtingida?faixaAtingida.pct:0;
+      const totalResComDesconto=faixaAtingida?+(totalRes*(1-descontoVolumePct/100)).toFixed(2):totalRes;
+      return{userId,name,reservas:rs,multas:ms,totalRes,totalMul,total:totalRes+totalMul,pago:pagoRes+pagoMul,horasTotais,faixaAtingida,descontoVolumePct,totalResComDesconto};
     }).filter(p=>p.reservas.length>0||p.multas.length>0);
 
   const opcoesProf=[{value:"",label:"Todos os profissionais"},...Object.entries(todosIds).map(([id,name])=>({value:id,label:name}))];
@@ -1532,18 +1548,43 @@ function CobrancasView({reservas,setReservas,lancamentos,setLancamentos,users,co
       {porUser.map(pro=>(<Card key={pro.userId} style={{marginBottom:16}}>
 
         {/* Cabeçalho do profissional */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <span style={{fontWeight:800,color:C.text,fontSize:15}}>{pro.name}</span>
-          <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-            <div style={{fontSize:13,color:C.textMid}}>
-              Reservas: <strong>{fmtR(pro.totalRes)}</strong>
-              {pro.totalMul>0&&<> · Multas: <strong style={{color:C.danger}}>{fmtR(pro.totalMul)}</strong></>}
+        <div style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}>
+            <span style={{fontWeight:800,color:C.text,fontSize:15}}>{pro.name}</span>
+            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+              {pro.total-pro.pago>0
+                ?<><span style={{fontSize:13,color:C.warning,fontWeight:700}}>{fmtR(pro.total-pro.pago)} pendente</span>
+                  <Btn variant="success" small onClick={()=>quitarTudo(pro.userId)}>Quitar tudo</Btn></>
+                :<span style={{fontSize:13,color:C.success,fontWeight:600}}>✓ Quitado</span>
+              }
             </div>
-            {pro.total-pro.pago>0
-              ?<><span style={{fontSize:13,color:C.warning,fontWeight:700}}>{fmtR(pro.total-pro.pago)} pendente</span>
-                <Btn variant="success" small onClick={()=>quitarTudo(pro.userId)}>Quitar tudo</Btn></>
-              :<span style={{fontSize:13,color:C.success,fontWeight:600}}>✓ Quitado</span>
-            }
+          </div>
+          {/* Resumo de horas e desconto por volume */}
+          <div style={{background:C.surfaceAlt,borderRadius:8,padding:"10px 12px",display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{fontSize:13,color:C.textMid}}>
+              🕐 <strong>{pro.horasTotais.toFixed(1)}h</strong> reservadas
+            </div>
+            <div style={{fontSize:13,color:C.textMid}}>
+              Valor cheio: <strong>{fmtR(pro.totalRes)}</strong>
+            </div>
+            {pro.faixaAtingida?(
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{background:C.successLight,color:C.success,borderRadius:6,padding:"2px 8px",fontSize:12,fontWeight:700}}>
+                  🎯 Faixa {pro.faixaAtingida.horas}h+ → {pro.descontoVolumePct}% desconto
+                </span>
+                <span style={{fontSize:13,color:C.success,fontWeight:700}}>
+                  Com desconto: {fmtR(pro.totalResComDesconto)}
+                </span>
+                <span style={{fontSize:12,color:C.muted}}>
+                  (economia: {fmtR(pro.totalRes-pro.totalResComDesconto)})
+                </span>
+              </div>
+            ):(
+              <span style={{fontSize:12,color:C.muted}}>
+                {pro.horasTotais>0?(()=>{const prox=([...faixasVol].reverse().find(f=>f.horas>pro.horasTotais));return prox?`Faltam ${(prox.horas-pro.horasTotais).toFixed(1)}h para ${prox.pct}% de desconto`:""})():"Sem faixa de desconto"}
+              </span>
+            )}
+            {pro.totalMul>0&&<div style={{fontSize:13,color:C.danger}}>Multas: <strong>{fmtR(pro.totalMul)}</strong></div>}
           </div>
         </div>
 
@@ -1625,14 +1666,14 @@ function ProfissionaisView({users,setUsers}){
   const[erro,setErro]=useState("");
   const[saving,setSaving]=useState(false);
 
-  const abrirNovo=()=>{setEditando(null);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E"});setErro("");setModal(true);};
-  const abrirEditar=(u)=>{setEditando(u);setForm({nome:u.nome||"",email:u.email||"",senha:"",role:u.role||"professional",color:u.color||"#4A7C4E"});setErro("");setModal(true);};
+  const abrirNovo=()=>{setEditando(null);setForm({nome:"",email:"",senha:"",role:"professional",color:"#4A7C4E",desconto:""});setErro("");setModal(true);};
+  const abrirEditar=(u)=>{setEditando(u);setForm({nome:u.nome||"",email:u.email||"",senha:"",role:u.role||"professional",color:u.color||"#4A7C4E",desconto:u.desconto!=null?String(u.desconto):""});setErro("");setModal(true);};
 
   const salvar=async()=>{
     setErro("");setSaving(true);
     try{
       if(editando){
-        const atualizado=cleanObj({...editando,nome:form.nome,role:form.role,color:form.color});
+        const atualizado=cleanObj({...editando,nome:form.nome,role:form.role,color:form.color,desconto:form.desconto!==""?Number(form.desconto):0});
         await setDoc(doc(db,"users",editando.uid),atualizado);
         setUsers(prev=>prev.map(u=>u.uid===editando.uid?atualizado:u));
         setModal(false);
@@ -1712,11 +1753,13 @@ function ConfigView({config,setConfig}){
   const[form,setForm]=useState(JSON.parse(JSON.stringify(config)));
   const[salvo,setSalvo]=useState(false);
   const[novasSalas,setNovasSalas]=useState(form.salas||[]);
+  const[faixas,setFaixas]=useState(form.faixasDescontoVolume||DEFAULT_CONFIG.faixasDescontoVolume);
   const salvar=async()=>{
-    const novo={...form,salas:novasSalas};
+    const novo={...form,salas:novasSalas,faixasDescontoVolume:faixas};
     await setDoc(doc(db,"config","main"),novo);
     setConfig(novo);setSalvo(true);setTimeout(()=>setSalvo(false),2000);
   };
+  const editFaixa=(i,campo,val)=>setFaixas(fs=>fs.map((f,j)=>j===i?{...f,[campo]:Number(val)}:f));
   const setPeriodo=(k,campo,val)=>setForm(f=>({...f,periodos:{...f.periodos,[k]:{...f.periodos[k],[campo]:val}}}));
   const addSala=()=>setNovasSalas(s=>[...s,{id:uid(),label:`Sala ${s.length+1}`,cor:"#6366F1",corLight:"#EEF2FF"}]);
   const removeSala=(id)=>{if(novasSalas.length<=1)return alert("Precisa ter ao menos uma sala.");setNovasSalas(s=>s.filter(x=>x.id!==id));};
@@ -1771,6 +1814,20 @@ function ConfigView({config,setConfig}){
               <div style={{background:C.accentLight,borderRadius:8,padding:"7px 12px",fontSize:13,color:C.accent,fontWeight:700,textAlign:"center"}}>{p.label}: {fmtR(p.valor||0)}</div>
             </div>))}
           </div>
+        </div>
+      </Card>
+      <Card style={{marginBottom:20}}>
+        <h3 style={{margin:"0 0 4px",color:C.text,fontSize:16,fontWeight:700}}>Desconto por volume de horas</h3>
+        <p style={{margin:"0 0 16px",fontSize:13,color:C.muted}}>Aplicado automaticamente em Cobranças quando o profissional atinge a faixa no mês.</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+          {faixas.map((f,i)=>(
+            <div key={i} style={{background:C.surfaceAlt,borderRadius:10,padding:14,border:`1px solid ${C.border}`}}>
+              <div style={{fontSize:12,color:C.muted,fontWeight:600,marginBottom:10}}>Faixa {i+1}</div>
+              <Field label="A partir de (horas)" type="number" value={f.horas} onChange={v=>editFaixa(i,"horas",v)}/>
+              <Field label="Desconto (%)" type="number" value={f.pct} onChange={v=>editFaixa(i,"pct",v)}/>
+              <div style={{background:C.accentLight,borderRadius:8,padding:"7px 12px",fontSize:13,color:C.accent,fontWeight:700,textAlign:"center"}}>{f.horas}h+ → {f.pct}% de desconto</div>
+            </div>
+          ))}
         </div>
       </Card>
     </div>
