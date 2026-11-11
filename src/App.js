@@ -79,7 +79,7 @@ const podeEditar=(reserva)=>{
   const agora=new Date();
   const dataReserva=new Date(reserva.date+"T"+reserva.horaInicio+":00");
   const diffHoras=(dataReserva-agora)/(1000*60*60);
-  return diffHoras>=24;
+  return diffHoras>=12;
 };
 
 const diaPermitido=(dateStr,horaInicio)=>{
